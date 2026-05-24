@@ -10,6 +10,7 @@ body { margin: 0; min-width: 320px; }
 button, input, select, textarea { font: inherit; }
 button { min-height: 42px; border: 1px solid #c8d2cb; background: #ffffff; color: #26312d; border-radius: 8px; padding: 0.65rem 0.9rem; cursor: pointer; }
 button:hover { border-color: #6f8f83; }
+button:disabled { cursor: not-allowed; opacity: 0.45; }
 input, select, textarea { width: 100%; border: 1px solid #cbd6d0; border-radius: 8px; padding: 0.72rem 0.8rem; background: #ffffff; color: #27312e; }
 textarea { resize: vertical; }
 label { display: grid; gap: 0.35rem; font-weight: 650; }
@@ -65,6 +66,18 @@ h2, h3, p { margin-top: 0; overflow-wrap: anywhere; }
 .today-actions { display: grid; gap: 0.55rem; margin-bottom: 0.9rem; }
 .add-task-button { width: 100%; min-height: 50px; font-size: 1.02rem; }
 .today-add-panel { display: grid; gap: 0.75rem; padding-top: 0.35rem; }
+.routine-panel { display: grid; gap: 0.75rem; }
+.routine-list { display: grid; gap: 0.45rem; }
+.routine-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 0.5rem; align-items: center; padding: 0.55rem 0.6rem; border: 1px solid #dce4df; border-radius: 8px; background: #fbfcfb; }
+.routine-check { display: inline-flex; grid-template-columns: none; align-items: center; gap: 0.55rem; min-width: 0; font-weight: 700; }
+.routine-check input { width: auto; flex: 0 0 auto; }
+.routine-check span { min-width: 0; line-height: 1.45; overflow-wrap: anywhere; }
+.routine-row-actions { display: grid; grid-template-columns: repeat(3, 42px); gap: 0.35rem; }
+.routine-row-actions button { width: 42px; min-height: 38px; padding: 0; font-weight: 800; }
+.routine-add-button { width: fit-content; }
+.routine-add-form { display: grid; gap: 0.7rem; padding: 0.75rem; border: 1px solid #dce4df; border-radius: 8px; background: #fbfcfb; }
+.routine-register-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.5rem; }
+.routine-register-actions button { width: 100%; font-weight: 800; }
 .subtle-button { color: #6d514d; border-color: #ddceca; }
 .danger-button { background: #8c4a43; border-color: #8c4a43; color: #ffffff; }
 .task-form { display: grid; gap: 0.85rem; }
@@ -141,6 +154,8 @@ h2, h3, p { margin-top: 0; overflow-wrap: anywhere; }
   .stock-filter-toggle { justify-content: center; flex-wrap: wrap; }
   .enjoyment-date-row { grid-template-columns: 1fr; align-items: stretch; }
   .enjoyment-done-button { width: 100%; }
+  .routine-row { grid-template-columns: minmax(0, 1fr) auto; }
+  .routine-register-actions { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .form-grid, .filter-bar, .fixed-grid { grid-template-columns: 1fr; }
   .section { padding: 0.9rem; }
 }
