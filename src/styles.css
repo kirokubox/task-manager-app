@@ -47,9 +47,11 @@ h2, h3, p { margin-top: 0; overflow-wrap: anywhere; }
 .collapse-description { color: #66736d; line-height: 1.7; margin-bottom: 0; }
 .task-grid { display: grid; gap: 0.75rem; }
 .task-card { display: grid; gap: 0.8rem; border: 1px solid #d9e2dc; border-radius: 8px; padding: 1rem; background: #fbfcfb; }
+.task-card.priority-high-card { background: #fffdf9; border-color: #e8c7a4; }
 .task-card h3 { margin: 0; font-size: 1.08rem; line-height: 1.45; overflow-wrap: anywhere; }
 .chips { display: flex; flex-wrap: wrap; gap: 0.4rem; }
 .chips span { border-radius: 999px; background: #e7f0ec; color: #2d5b4f; padding: 0.28rem 0.58rem; font-size: 0.82rem; font-weight: 700; }
+.task-card.priority-high-card .priority-chip { background: #f6dfc9; color: #80451f; }
 .task-meta { display: flex; flex-wrap: wrap; gap: 0.6rem; color: #5f6d67; font-size: 0.92rem; }
 .task-memo { margin: 0; white-space: pre-wrap; color: #3f4c47; line-height: 1.65; }
 .small-note, .empty-text { color: #65716c; line-height: 1.65; margin-bottom: 0; }

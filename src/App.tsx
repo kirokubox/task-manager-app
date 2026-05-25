@@ -8,7 +8,7 @@ type TaskStatus = "今日やる" | "近いうち" | "いつかやる" | "連絡�
 type ActiveTaskCategory = "生活" | "仕事" | "お金" | "人・連絡" | "趣味" | "開発" | "SNS" | "その他";
 type TaskCategory = ActiveTaskCategory | string;
 type TaskPlace = "PC" | "スマホ" | "家" | "外" | "Codexに頼む" | "未設定";
-type TimeSlot = "" | "午前" | "午後" | "夕方" | "夜" | "深夜";
+type TimeSlot = string;
 type RecurringKind = "楽しみ" | "習慣" | "確認" | "振り返り";
 type RepeatType = "weekly" | "monthly";
 type Weekday = 0 | 1 | 2 | 3 | 4 | 5 | 6;
@@ -162,8 +162,7 @@ const TASK_TYPES: TaskType[] = ["やるべきこと", "やりたいこと", "思
 const TASK_STATUSES: TaskStatus[] = ["今日やる", "近いうち", "いつかやる", "連絡待ち", "保留", "完了"];
 const ACTIVE_TASK_CATEGORIES: ActiveTaskCategory[] = ["生活", "仕事", "お金", "人・連絡", "趣味", "開発", "SNS", "その他"];
 const TASK_PLACES: TaskPlace[] = ["PC", "スマホ", "家", "外", "Codexに頼む", "未設定"];
-const TIME_SLOTS: TimeSlot[] = ["", "午前", "午後", "夕方", "夜", "深夜"];
-const TIME_SLOT_SORT_ORDER: TimeSlot[] = ["午前", "午後", "夕方", "夜", "深夜", ""];
+const PRIORITY_OPTIONS: TimeSlot[] = ["", "高"];
 const INITIAL_ROUTINE_TITLES = [
   "朝食",
   "身支度",
@@ -260,8 +259,13 @@ const nowIso = () => {
 const byCreatedDesc = (a: Task, b: Task) => b.createdAt.localeCompare(a.createdAt);
 const byCompletedDesc = (a: Task, b: Task) => (b.completedAt ?? "").localeCompare(a.completedAt ?? "");
 const byUpdatedThenCreatedDesc = (a: Task, b: Task) => b.updatedAt.localeCompare(a.updatedAt) || byCreatedDesc(a, b);
-const byTimeSlotThenCreatedDesc = (a: Task, b: Task) => indexOrAfter(TIME_SLOT_SORT_ORDER, a.timeSlot) - indexOrAfter(TIME_SLOT_SORT_ORDER, b.timeSlot) || byCreatedDesc(a, b);
+const isHighPriority = (task: Pick<Task, "timeSlot">) => task.timeSlot === "高";
+const prioritySort = (a: Pick<Task, "timeSlot">, b: Pick<Task, "timeSlot">) => Number(isHighPriority(b)) - Number(isHighPriority(a));
+const priorityDraftValue = (value: string | undefined) => value === "高" ? "高" : "";
+const byPriorityThenCreatedDesc = (a: Task, b: Task) => prioritySort(a, b) || byCreatedDesc(a, b);
 const byDueThenUpdatedDesc = (a: Task, b: Task) => {
+  const priority = prioritySort(a, b);
+  if (priority !== 0) return priority;
   const aHasDue = Boolean(a.dueDate);
   const bHasDue = Boolean(b.dueDate);
   if (aHasDue && bHasDue) return (a.dueDate ?? "").localeCompare(b.dueDate ?? "") || byUpdatedThenCreatedDesc(a, b);
@@ -318,7 +322,7 @@ function isTask(value: unknown): value is Task {
     typeof task.category === "string" &&
     typeof task.memo === "string" &&
     isOneOf(task.place, TASK_PLACES) &&
-    (isOneOf(task.timeSlot, TIME_SLOTS) || task.timeSlot === undefined) &&
+    (typeof task.timeSlot === "string" || task.timeSlot === undefined) &&
     (typeof task.dueDate === "string" || task.dueDate === null) &&
     typeof task.createdAt === "string" &&
     typeof task.updatedAt === "string" &&
@@ -327,7 +331,7 @@ function isTask(value: unknown): value is Task {
 }
 
 function normalizeTask(task: Task): Task {
-  return { ...task, timeSlot: task.timeSlot ?? "" };
+  return { ...task, timeSlot: typeof task.timeSlot === "string" ? task.timeSlot : "" };
 }
 
 function isFrequentTask(value: unknown): value is FrequentTask {
@@ -555,7 +559,7 @@ function draftFromTask(task: Task): TaskDraft {
     status: task.status,
     category: task.category,
     place: task.place,
-    timeSlot: task.timeSlot ?? "",
+    timeSlot: priorityDraftValue(task.timeSlot),
     dueDate: task.dueDate ?? "",
     memo: task.memo,
   };
@@ -774,7 +778,7 @@ function App() {
   }, [notice]);
 
   const tasks = data.tasks;
-  const todayTasks = tasks.filter((task) => task.status === "今日やる").sort(byTimeSlotThenCreatedDesc);
+  const todayTasks = tasks.filter((task) => task.status === "今日やる").sort(byPriorityThenCreatedDesc);
   const nearDueTasks = tasks.filter((task) => isNearDue(task) && task.status !== "連絡待ち").sort((a, b) => (a.dueDate ?? "").localeCompare(b.dueDate ?? ""));
   const completedTodayTasks = tasks.filter((task) => task.status === "完了" && toDateKey(task.completedAt) === todayKey()).sort(byCompletedDesc);
   const waitingContactTasks = tasks.filter((task) => task.status === "連絡待ち" && !task.completedAt).sort(byCreatedDesc);
@@ -1673,11 +1677,11 @@ function TaskCard({ task, actions, saveTask, copyTask }: { task: Task; actions: 
   const [editing, setEditing] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
   const actionConfig = isTaskCardActions(actions) ? actions : null;
-  return <article className="task-card">
+  return <article className={`task-card ${isHighPriority(task) ? "priority-high-card" : ""}`.trim()}>
     {editing ? <TaskForm initial={draftFromTask(task)} submitLabel="保存" onSubmit={(draft) => { if (!draft.title.trim()) return false; saveTask(task, draft); setEditing(false); return true; }} onCopyDraft={copyTask} onCancel={() => setEditing(false)} allowDone completedAt={task.completedAt} collapseDetails /> : <>
-      <div className="chips"><span>{task.type}</span><span>{task.category}</span><span>{task.status}</span></div>
+      <div className="chips"><span>{task.type}</span><span>{task.category}</span><span>{task.status}</span>{isHighPriority(task) && <span className="priority-chip">優先度：高</span>}</div>
       <h3>{task.title}</h3>
-      <div className="task-meta">{task.dueDate && <span>期限：{task.dueDate}（{dueLabel(task.dueDate)}）</span>}<span>場所：{task.place}</span>{task.timeSlot && <span>やる時間帯：{task.timeSlot}</span>}</div>
+      <div className="task-meta">{task.dueDate && <span>期限：{task.dueDate}（{dueLabel(task.dueDate)}）</span>}<span>場所：{task.place}</span></div>
       {task.memo && <p className="task-memo">{task.memo}</p>}
       {task.completedAt && <p className="small-note">完了：{task.completedAt.slice(0, 10)}</p>}
       {actionConfig ? <div className="task-card-actions">
@@ -1732,7 +1736,7 @@ function TaskForm({ initial, submitLabel, onSubmit, onCopyDraft, onCancel, allow
     </div>}
     <label>タイトル<input value={draft.title} onChange={(event) => setField("title", event.target.value)} placeholder="タイトルだけでも追加できます" /></label>
     {collapseDetails && <button className="form-details-toggle" type="button" onClick={() => setDetailsOpen((current) => !current)} aria-expanded={detailsOpen}>{detailsOpen ? "▼ 項目を閉じる" : "▶ 項目を開く"}</button>}
-    {detailsOpen && <div className="task-create-detail-grid"><Select label="種類" value={draft.type} options={TASK_TYPES} onChange={(value) => setField("type", value as TaskType)} /><Select label="状態" value={draft.status} options={allowDone ? TASK_STATUSES : TASK_STATUSES.filter((status) => status !== "完了")} onChange={(value) => setField("status", value as TaskStatus)} /><CategorySelect value={draft.category} onChange={(value) => setField("category", value)} /><Select label="作業場所" value={draft.place} options={TASK_PLACES} onChange={(value) => setField("place", value as TaskPlace)} /><Select label="やる時間帯" value={draft.timeSlot} options={TIME_SLOTS} onChange={(value) => setField("timeSlot", value as TimeSlot)} /><label>期限<input type="date" value={draft.dueDate} onChange={(event) => setField("dueDate", event.target.value)} /></label></div>}
+    {detailsOpen && <div className="task-create-detail-grid"><Select label="種類" value={draft.type} options={TASK_TYPES} onChange={(value) => setField("type", value as TaskType)} /><Select label="状態" value={draft.status} options={allowDone ? TASK_STATUSES : TASK_STATUSES.filter((status) => status !== "完了")} onChange={(value) => setField("status", value as TaskStatus)} /><CategorySelect value={draft.category} onChange={(value) => setField("category", value)} /><Select label="作業場所" value={draft.place} options={TASK_PLACES} onChange={(value) => setField("place", value as TaskPlace)} /><Select label="優先度" value={priorityDraftValue(draft.timeSlot)} options={PRIORITY_OPTIONS} emptyLabel="未入力" onChange={(value) => setField("timeSlot", value as TimeSlot)} /><label>期限<input type="date" value={draft.dueDate} onChange={(event) => setField("dueDate", event.target.value)} /></label></div>}
     {collapseDetails && detailsOpen && onCopyDraft && <button className="subtle-button" type="button" onClick={copyDraft}>コピーして新規登録</button>}
     <label>メモ<textarea value={draft.memo} onChange={(event) => setField("memo", event.target.value)} rows={3} /></label>
     {completedAt && <p className="small-note">完了日は自動設定です：{completedAt.slice(0, 10)}</p>}
@@ -1741,8 +1745,8 @@ function TaskForm({ initial, submitLabel, onSubmit, onCopyDraft, onCancel, allow
   </form>;
 }
 
-function Select({ label, value, options, onChange }: { label: string; value: string; options: readonly string[]; onChange: (value: string) => void }) {
-  return <label>{label}<select value={value} onChange={(event) => onChange(event.target.value)}>{options.map((option) => <option key={option} value={option}>{option === "" ? "未設定" : option}</option>)}</select></label>;
+function Select({ label, value, options, onChange, emptyLabel = "未設定" }: { label: string; value: string; options: readonly string[]; onChange: (value: string) => void; emptyLabel?: string }) {
+  return <label>{label}<select value={value} onChange={(event) => onChange(event.target.value)}>{options.map((option) => <option key={option} value={option}>{option === "" ? emptyLabel : option}</option>)}</select></label>;
 }
 
 function CategorySelect({ value, onChange }: { value: TaskCategory; onChange: (value: TaskCategory) => void }) {
