@@ -2,6 +2,6 @@
 import react from "@vitejs/plugin-react";
 
 export default defineConfig({
-  base: "/yuru-task-app/",
+  base: "/task-manager-app/",
   plugins: [react()],
 });

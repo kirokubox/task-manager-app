@@ -140,6 +140,13 @@ dist
 dist/
 .DS_Store
 pnpm-debug.log*
+backup_json/
+backups/
+task-manager-backup-*.json
+task-manager-export-*.md
+yurutask-backup-*.json
+yurutask-export-*.md
+*.export.md
 
 # Project notes kept outside the app repository
 23_ゆるタスク_改善履歴.md
