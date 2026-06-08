@@ -2,6 +2,7 @@
 
 const STORAGE_KEY = "yuki-task-manager-data";
 const ACTIVE_VIEW_KEY = "yuki-task-manager-active-view";
+const DIARY_TASK_CANDIDATES_KEY = "yuki-app-bridge-diary-task-candidates-v1";
 
 type TaskType = "やるべきこと" | "やりたいこと" | "思いつき";
 type TaskStatus = "今日やる" | "近いうち" | "いつかやる" | "連絡待ち" | "保留" | "完了";
@@ -170,6 +171,28 @@ type WeeklyDurationSummary = {
   title: string;
   totalMinutes: number;
   count: number;
+};
+
+type DiaryTaskCandidateStatus =
+  | "pending"
+  | "addedToday"
+  | "addedSoon"
+  | "addedSomeday"
+  | "completed"
+  | "dismissed";
+
+type DiaryTaskCandidate = {
+  id: string;
+  sourceApp: "season-diary";
+  type: "taskCandidate";
+  title: string;
+  sourceText: string;
+  sourceDate: string;
+  sourceMemoId?: string;
+  createdAt: string;
+  status: DiaryTaskCandidateStatus;
+  processedAt?: string;
+  targetTaskId?: string;
 };
 
 const TASK_TYPES: TaskType[] = ["やるべきこと", "やりたいこと", "思いつき"];
@@ -345,6 +368,36 @@ function isDurationMinutes(value: unknown): value is number | null {
   return value === null || (typeof value === "number" && Number.isInteger(value) && value >= 0);
 }
 
+function isDiaryTaskCandidate(value: unknown): value is DiaryTaskCandidate {
+  if (!value || typeof value !== "object") return false;
+  const item = value as Partial<DiaryTaskCandidate>;
+  return (
+    typeof item.id === "string" &&
+    item.sourceApp === "season-diary" &&
+    item.type === "taskCandidate" &&
+    typeof item.title === "string" &&
+    typeof item.sourceText === "string" &&
+    typeof item.sourceDate === "string" &&
+    typeof item.createdAt === "string" &&
+    ["pending", "addedToday", "addedSoon", "addedSomeday", "completed", "dismissed"].includes(item.status ?? "")
+  );
+}
+
+function loadDiaryTaskCandidates(): DiaryTaskCandidate[] {
+  try {
+    const raw = localStorage.getItem(DIARY_TASK_CANDIDATES_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed.filter(isDiaryTaskCandidate) : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveDiaryTaskCandidates(candidates: DiaryTaskCandidate[]) {
+  localStorage.setItem(DIARY_TASK_CANDIDATES_KEY, JSON.stringify(candidates));
+}
+
 function isTask(value: unknown): value is Task {
   if (!value || typeof value !== "object") return false;
   const task = value as Partial<Task>;
@@ -502,6 +555,26 @@ function makeTask(draft: TaskDraft): Task {
     completedAt,
     completedLifeDate: completedAt ? toDateKey(completedAt) : null,
     durationMinutes: null,
+  };
+}
+
+function makeTaskFromDiaryCandidate(candidate: DiaryTaskCandidate, status: TaskStatus, completion?: { completedAt: string; completedLifeDate: string; durationMinutes: number | null }): Task {
+  const time = nowIso();
+  return {
+    id: crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`,
+    title: candidate.title.trim(),
+    type: "思いつき",
+    status,
+    category: "生活",
+    memo: candidate.sourceText,
+    place: "未設定",
+    timeSlot: "",
+    dueDate: null,
+    createdAt: time,
+    updatedAt: time,
+    completedAt: completion?.completedAt ?? null,
+    completedLifeDate: completion?.completedLifeDate ?? null,
+    durationMinutes: completion?.durationMinutes ?? null,
   };
 }
 
@@ -848,6 +921,7 @@ function App() {
   const [filters, setFilters] = useState<Record<string, FilterValue>>({});
   const [searchQuery, setSearchQuery] = useState("");
   const [saveBlocked, setSaveBlocked] = useState(Boolean(loaded.error));
+  const [diaryTaskCandidates, setDiaryTaskCandidates] = useState<DiaryTaskCandidate[]>(() => loadDiaryTaskCandidates());
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const appendFileInputRef = useRef<HTMLInputElement | null>(null);
   const currentLifeDate = getLifeDateKey(new Date(), data.settings.dayBoundaryTime);
@@ -869,6 +943,14 @@ function App() {
   }, [activeTab]);
 
   useEffect(() => {
+    const refreshCandidates = (event: StorageEvent) => {
+      if (event.key === DIARY_TASK_CANDIDATES_KEY) setDiaryTaskCandidates(loadDiaryTaskCandidates());
+    };
+    window.addEventListener("storage", refreshCandidates);
+    return () => window.removeEventListener("storage", refreshCandidates);
+  }, []);
+
+  useEffect(() => {
     if (!notice) return;
     const timer = window.setTimeout(() => setNotice(""), 2600);
     return () => window.clearTimeout(timer);
@@ -885,6 +967,7 @@ function App() {
   const recurringCompletedToday = completedRecurringToday(data);
   const stockEnjoymentInventory = enjoymentInventory(data);
   const weeklyWorkSummary = weeklyDurationSummary(tasks, currentLifeDate);
+  const pendingDiaryCandidates = diaryTaskCandidates.filter((candidate) => candidate.status === "pending").sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   const matchesSearch = (task: Task) => {
     const query = searchQuery.trim().toLowerCase();
     if (!query) return true;
@@ -902,6 +985,36 @@ function App() {
     setData((current) => ({ ...current, tasks: [makeTask(draft), ...current.tasks] }));
     setNotice("タスクを追加しました。");
     return true;
+  }
+
+  function updateDiaryCandidate(candidateId: string, status: DiaryTaskCandidateStatus, targetTaskId?: string) {
+    const current = loadDiaryTaskCandidates();
+    const next = current.map((candidate) => candidate.id === candidateId ? {
+      ...candidate,
+      status,
+      processedAt: nowIso(),
+      ...(targetTaskId ? { targetTaskId } : {}),
+    } : candidate);
+    saveDiaryTaskCandidates(next);
+    setDiaryTaskCandidates(next);
+  }
+
+  function addTaskFromDiaryCandidate(candidate: DiaryTaskCandidate, status: TaskStatus, candidateStatus: DiaryTaskCandidateStatus, record?: CompletionRecordDraft) {
+    const lifeDate = currentLifeDate;
+    const task = makeTaskFromDiaryCandidate(candidate, status, record ? {
+      completedAt: makeCompletedAt(lifeDate, record.completedTime),
+      completedLifeDate: lifeDate,
+      durationMinutes: record.durationMinutes,
+    } : undefined);
+    setSaveBlocked(false);
+    setData((current) => ({ ...current, tasks: [task, ...current.tasks] }));
+    updateDiaryCandidate(candidate.id, candidateStatus, task.id);
+    setNotice("日記からタスクを追加しました。");
+  }
+
+  function dismissDiaryCandidate(candidate: DiaryTaskCandidate) {
+    updateDiaryCandidate(candidate.id, "dismissed");
+    setNotice("候補を使わないにしました。");
   }
 
   function addRoutineItem(title: string) {
@@ -1304,7 +1417,7 @@ function App() {
       {notice && <div className="message success">{notice}</div>}
 
       <main>
-        {activeTab === "今日" && <TodayView todayTasks={todayTasks} nearDueTasks={nearDueTasks} recurringTodayTasks={recurringTodayTasks} completedTodayTasks={completedTodayTasks} recurringCompletedToday={recurringCompletedToday} waitingContactTasks={waitingContactTasks} routineItems={data.routineItems} frequentTasks={data.frequentTasks} addTask={addTask} copyTask={addTask} saveTask={saveTask} moveTask={moveTask} completeTask={completeTask} saveCompletionRecord={saveCompletionRecord} undoComplete={undoComplete} completeRecurringTask={completeRecurringTask} addRoutineItem={addRoutineItem} deleteRoutineItem={deleteRoutineItem} moveRoutineItem={moveRoutineItem} registerRoutineCompletion={registerRoutineCompletion} registerFrequentTask={registerFrequentTask} requestDelete={setDeleteTarget} />}
+        {activeTab === "今日" && <TodayView todayTasks={todayTasks} nearDueTasks={nearDueTasks} recurringTodayTasks={recurringTodayTasks} completedTodayTasks={completedTodayTasks} recurringCompletedToday={recurringCompletedToday} waitingContactTasks={waitingContactTasks} routineItems={data.routineItems} frequentTasks={data.frequentTasks} diaryTaskCandidates={pendingDiaryCandidates} addTask={addTask} copyTask={addTask} saveTask={saveTask} moveTask={moveTask} completeTask={completeTask} saveCompletionRecord={saveCompletionRecord} addTaskFromDiaryCandidate={addTaskFromDiaryCandidate} dismissDiaryCandidate={dismissDiaryCandidate} undoComplete={undoComplete} completeRecurringTask={completeRecurringTask} addRoutineItem={addRoutineItem} deleteRoutineItem={deleteRoutineItem} moveRoutineItem={moveRoutineItem} registerRoutineCompletion={registerRoutineCompletion} registerFrequentTask={registerFrequentTask} requestDelete={setDeleteTarget} />}
         {activeTab === "ストック" && <StockView tasks={stockTasks} enjoymentInventory={stockEnjoymentInventory} enjoyInventoryItem={enjoyInventoryItem} filters={filters} setFilters={setFilters} searchQuery={searchQuery} setSearchQuery={setSearchQuery} copyTask={addTask} saveTask={saveTask} moveTask={moveTask} completeTask={completeTask} saveCompletionRecord={saveCompletionRecord} registerFrequentTask={registerFrequentTask} requestDelete={setDeleteTarget} matches={matches} matchesSearch={matchesSearch} />}
         {activeTab === "完了" && <DoneView tasks={doneTasks} recurringCompletions={data.recurringCompletions} weeklyWorkSummary={weeklyWorkSummary} filters={filters} setFilters={setFilters} searchQuery={searchQuery} setSearchQuery={setSearchQuery} copyTask={addTask} saveTask={saveTask} saveCompletionRecord={saveCompletionRecord} undoComplete={undoComplete} registerFrequentTask={registerFrequentTask} requestDelete={setDeleteTarget} matches={matches} matchesSearch={matchesSearch} />}
         {activeTab === "設定" && <SettingsView data={data} updateDayBoundaryTime={updateDayBoundaryTime} exportJson={exportJson} parseImport={parseImport} parseAppendImport={parseAppendImport} fileInputRef={fileInputRef} appendFileInputRef={appendFileInputRef} importError={importError} addTaskFromFrequentTask={addTaskFromFrequentTask} saveFrequentTask={saveFrequentTask} requestFrequentDelete={setFrequentDeleteTarget} addRecurringTask={addRecurringTask} saveRecurringTask={saveRecurringTask} setRecurringActive={setRecurringActive} requestRecurringDelete={setRecurringDeleteTarget} />}
@@ -1368,12 +1481,15 @@ function TodayView(props: {
   waitingContactTasks: Task[];
   routineItems: RoutineItem[];
   frequentTasks: FrequentTask[];
+  diaryTaskCandidates: DiaryTaskCandidate[];
   addTask: (draft: TaskDraft) => boolean;
   copyTask: (draft: TaskDraft) => boolean;
   saveTask: (task: Task, draft: TaskDraft) => void;
   moveTask: (task: Task, status: TaskStatus) => void;
   completeTask: (task: Task, record: CompletionRecordDraft) => void;
   saveCompletionRecord: (task: Task, record: CompletionRecordDraft) => void;
+  addTaskFromDiaryCandidate: (candidate: DiaryTaskCandidate, status: TaskStatus, candidateStatus: DiaryTaskCandidateStatus, record?: CompletionRecordDraft) => void;
+  dismissDiaryCandidate: (candidate: DiaryTaskCandidate) => void;
   requestDelete: (task: Task) => void;
   undoComplete: (task: Task) => void;
   completeRecurringTask: (item: VisibleRecurringTask) => void;
@@ -1385,6 +1501,7 @@ function TodayView(props: {
 }) {
   const [openSections, setOpenSections] = useState<Record<string, boolean>>({ today: true });
   const [isAddFormOpen, setIsAddFormOpen] = useState(false);
+  const [isDiaryCandidatesOpen, setIsDiaryCandidatesOpen] = useState(false);
   const [isRoutineOpen, setIsRoutineOpen] = useState(false);
   const filteredTodayTasks = props.todayTasks;
   const filteredNearDueTasks = props.nearDueTasks;
@@ -1403,10 +1520,16 @@ function TodayView(props: {
   return <div className="view-stack">
     <Section title="今日">
       <div className="today-actions">
-        <button className="primary-button add-task-button" type="button" onClick={() => setIsAddFormOpen((current) => !current)} aria-expanded={isAddFormOpen}>{isAddFormOpen ? "▼ 新規タスク" : "＋ 新規タスク"}</button>
+        <div className="today-entry-buttons">
+          <button className="primary-button add-task-button" type="button" onClick={() => setIsAddFormOpen((current) => !current)} aria-expanded={isAddFormOpen}>{isAddFormOpen ? "▼ 新規タスク" : "＋ 新規タスク"}</button>
+          <button type="button" onClick={() => setIsDiaryCandidatesOpen((current) => !current)} aria-expanded={isDiaryCandidatesOpen}>
+            日記から候補{props.diaryTaskCandidates.length > 0 ? ` ${props.diaryTaskCandidates.length}件` : ""}
+          </button>
+        </div>
         {isAddFormOpen && <div className="today-add-panel">
           <TaskForm initial={newDraft("いつかやる")} submitLabel="タスクを追加" onSubmit={addTaskAndClose} onCancel={() => setIsAddFormOpen(false)} allowDone frequentTasks={props.frequentTasks} />
         </div>}
+        {isDiaryCandidatesOpen && <DiaryCandidatePanel candidates={props.diaryTaskCandidates} addTaskFromDiaryCandidate={props.addTaskFromDiaryCandidate} dismissDiaryCandidate={props.dismissDiaryCandidate} />}
       </div>
     </Section>
     <CollapsibleSection title="ルーティン" count={props.routineItems.length} isOpen={isRoutineOpen} onToggle={() => setIsRoutineOpen((current) => !current)}>
@@ -1435,6 +1558,40 @@ function TodayView(props: {
       <TaskList empty="連絡待ちはありません。" tasks={filteredWaitingContactTasks} actions={(task) => compactActions(<CompleteTaskAction task={task} completeTask={props.completeTask} />, <><MoveButtons task={task} moveTask={props.moveTask} /><Action subtle onClick={() => props.registerFrequentTask(task)}>よく使う</Action><Action subtle onClick={() => props.requestDelete(task)}>削除</Action></>)} saveTask={props.saveTask} copyTask={props.copyTask} saveCompletionRecord={props.saveCompletionRecord} />
     </CollapsibleSection>
   </div>;
+}
+
+function DiaryCandidatePanel({ candidates, addTaskFromDiaryCandidate, dismissDiaryCandidate }: { candidates: DiaryTaskCandidate[]; addTaskFromDiaryCandidate: (candidate: DiaryTaskCandidate, status: TaskStatus, candidateStatus: DiaryTaskCandidateStatus, record?: CompletionRecordDraft) => void; dismissDiaryCandidate: (candidate: DiaryTaskCandidate) => void }) {
+  if (candidates.length === 0) return <div className="diary-candidate-panel"><p className="empty-text">日記からの候補はありません。</p></div>;
+  return <div className="diary-candidate-panel">
+    <h3>日記から候補</h3>
+    <div className="diary-candidate-list">
+      {candidates.map((candidate) => <DiaryCandidateCard key={candidate.id} candidate={candidate} addTaskFromDiaryCandidate={addTaskFromDiaryCandidate} dismissDiaryCandidate={dismissDiaryCandidate} />)}
+    </div>
+  </div>;
+}
+
+function DiaryCandidateCard({ candidate, addTaskFromDiaryCandidate, dismissDiaryCandidate }: { candidate: DiaryTaskCandidate; addTaskFromDiaryCandidate: (candidate: DiaryTaskCandidate, status: TaskStatus, candidateStatus: DiaryTaskCandidateStatus, record?: CompletionRecordDraft) => void; dismissDiaryCandidate: (candidate: DiaryTaskCandidate) => void }) {
+  const [completing, setCompleting] = useState(false);
+  return <article className="diary-candidate-card">
+    <div>
+      <h4>{candidate.title}</h4>
+      <p className="candidate-source-text">元メモ：{candidate.sourceText.length > 96 ? `${candidate.sourceText.slice(0, 96)}...` : candidate.sourceText}</p>
+      <div className="task-meta"><span>日記：{candidate.sourceDate}</span></div>
+    </div>
+    {completing ? <CompletionRecordForm
+      initialTime={timeKeyFromDate(new Date())}
+      initialDuration={null}
+      submitLabel="この内容で完了"
+      onSubmit={(record) => { addTaskFromDiaryCandidate(candidate, "完了", "completed", record); setCompleting(false); }}
+      onCancel={() => setCompleting(false)}
+    /> : <div className="diary-candidate-actions">
+      <Action onClick={() => addTaskFromDiaryCandidate(candidate, "今日やる", "addedToday")}>今日やる</Action>
+      <Action onClick={() => addTaskFromDiaryCandidate(candidate, "近いうち", "addedSoon")}>近いうち</Action>
+      <Action onClick={() => addTaskFromDiaryCandidate(candidate, "いつかやる", "addedSomeday")}>いつか</Action>
+      <Action onClick={() => setCompleting(true)}>完了</Action>
+      <Action subtle onClick={() => dismissDiaryCandidate(candidate)}>使わない</Action>
+    </div>}
+  </article>;
 }
 
 function RoutineChecklist({ items, addRoutineItem, deleteRoutineItem, moveRoutineItem, registerRoutineCompletion }: { items: RoutineItem[]; addRoutineItem: (title: string) => boolean; deleteRoutineItem: (id: string) => void; moveRoutineItem: (id: string, direction: -1 | 1) => void; registerRoutineCompletion: (checkedIds: string[], targetDate: string) => boolean }) {
