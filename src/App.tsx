@@ -3,6 +3,7 @@
 const STORAGE_KEY = "yuki-task-manager-data";
 const ACTIVE_VIEW_KEY = "yuki-task-manager-active-view";
 const DIARY_TASK_CANDIDATES_KEY = "yuki-app-bridge-diary-task-candidates-v1";
+const TASK_DIARY_COMPLETIONS_KEY = "yuki-app-bridge-task-diary-completions-v1";
 
 type TaskType = "やるべきこと" | "やりたいこと" | "思いつき";
 type TaskStatus = "今日やる" | "近いうち" | "いつかやる" | "連絡待ち" | "保留" | "完了";
@@ -193,6 +194,26 @@ type DiaryTaskCandidate = {
   status: DiaryTaskCandidateStatus;
   processedAt?: string;
   targetTaskId?: string;
+};
+
+type TaskDiaryCompletionBridgeStatus = "pending" | "imported" | "dismissed";
+
+type TaskDiaryCompletionBridgeItem = {
+  id: string;
+  sourceApp: "yuru-task";
+  type: "taskCompletion";
+  sourceTaskId: string;
+  title: string;
+  memo?: string;
+  completedAt: string;
+  completedLifeDate: string;
+  durationMinutes: number | null;
+  category?: string;
+  createdAt: string;
+  updatedAt: string;
+  status: TaskDiaryCompletionBridgeStatus;
+  processedAt?: string;
+  targetDiaryDate?: string;
 };
 
 const TASK_TYPES: TaskType[] = ["やるべきこと", "やりたいこと", "思いつき"];
@@ -396,6 +417,43 @@ function loadDiaryTaskCandidates(): DiaryTaskCandidate[] {
 
 function saveDiaryTaskCandidates(candidates: DiaryTaskCandidate[]) {
   localStorage.setItem(DIARY_TASK_CANDIDATES_KEY, JSON.stringify(candidates));
+}
+
+function isTaskDiaryCompletionBridgeItem(value: unknown): value is TaskDiaryCompletionBridgeItem {
+  if (!value || typeof value !== "object") return false;
+  const item = value as Partial<TaskDiaryCompletionBridgeItem>;
+  return (
+    typeof item.id === "string" &&
+    item.sourceApp === "yuru-task" &&
+    item.type === "taskCompletion" &&
+    typeof item.sourceTaskId === "string" &&
+    typeof item.title === "string" &&
+    typeof item.completedAt === "string" &&
+    typeof item.completedLifeDate === "string" &&
+    isDurationMinutes(item.durationMinutes) &&
+    typeof item.createdAt === "string" &&
+    typeof item.updatedAt === "string" &&
+    ["pending", "imported", "dismissed"].includes(item.status ?? "")
+  );
+}
+
+function loadTaskDiaryCompletionBridgeItems(): TaskDiaryCompletionBridgeItem[] {
+  try {
+    const raw = localStorage.getItem(TASK_DIARY_COMPLETIONS_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed.filter(isTaskDiaryCompletionBridgeItem) : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveTaskDiaryCompletionBridgeItems(items: TaskDiaryCompletionBridgeItem[]) {
+  localStorage.setItem(TASK_DIARY_COMPLETIONS_KEY, JSON.stringify(items));
+}
+
+function makeCompletionBridgeId(taskId: string) {
+  return `task-completion-${taskId}`;
 }
 
 function isTask(value: unknown): value is Task {
@@ -999,6 +1057,39 @@ function App() {
     setDiaryTaskCandidates(next);
   }
 
+  function upsertTaskCompletionBridgeItem(task: Task) {
+    if (task.status !== "完了" || !task.completedAt) return;
+    const completedLifeDate = taskCompletedLifeDate(task) || currentLifeDate;
+    const now = nowIso();
+    const current = loadTaskDiaryCompletionBridgeItems();
+    const existing = current.find((item) => item.sourceTaskId === task.id);
+    const nextItem: TaskDiaryCompletionBridgeItem = {
+      id: existing?.id ?? makeCompletionBridgeId(task.id),
+      sourceApp: "yuru-task",
+      type: "taskCompletion",
+      sourceTaskId: task.id,
+      title: task.title,
+      memo: task.memo || undefined,
+      completedAt: task.completedAt,
+      completedLifeDate,
+      durationMinutes: task.durationMinutes ?? null,
+      category: task.category,
+      createdAt: existing?.createdAt ?? now,
+      updatedAt: now,
+      status: existing?.status ?? "pending",
+      ...(existing?.processedAt ? { processedAt: existing.processedAt } : {}),
+      ...(existing?.targetDiaryDate ? { targetDiaryDate: existing.targetDiaryDate } : {}),
+    };
+    const next = existing ? current.map((item) => item.sourceTaskId === task.id ? nextItem : item) : [...current, nextItem];
+    saveTaskDiaryCompletionBridgeItems(next);
+  }
+
+  function dismissPendingTaskCompletionBridgeItem(taskId: string) {
+    const current = loadTaskDiaryCompletionBridgeItems();
+    const next = current.map((item) => item.sourceTaskId === taskId && item.status === "pending" ? { ...item, status: "dismissed" as const, processedAt: nowIso(), updatedAt: nowIso() } : item);
+    saveTaskDiaryCompletionBridgeItems(next);
+  }
+
   function addTaskFromDiaryCandidate(candidate: DiaryTaskCandidate, status: TaskStatus, candidateStatus: DiaryTaskCandidateStatus, record?: CompletionRecordDraft) {
     const lifeDate = currentLifeDate;
     const task = makeTaskFromDiaryCandidate(candidate, status, record ? {
@@ -1008,6 +1099,7 @@ function App() {
     } : undefined);
     setSaveBlocked(false);
     setData((current) => ({ ...current, tasks: [task, ...current.tasks] }));
+    if (status === "完了") upsertTaskCompletionBridgeItem(task);
     updateDiaryCandidate(candidate.id, candidateStatus, task.id);
     setNotice("日記からタスクを追加しました。");
   }
@@ -1080,7 +1172,7 @@ function App() {
     const time = nowIso();
     const completedAt = draft.status === "完了" ? (task.completedAt ?? time) : null;
     const completedLifeDate = draft.status === "完了" ? (task.completedLifeDate ?? currentLifeDate) : null;
-    updateTask(task.id, () => ({
+    const updatedTask: Task = {
       ...task,
       title: draft.title.trim(),
       type: draft.type,
@@ -1094,7 +1186,9 @@ function App() {
       completedLifeDate,
       durationMinutes: draft.status === "完了" ? (task.durationMinutes ?? null) : null,
       updatedAt: time,
-    }));
+    };
+    updateTask(task.id, () => updatedTask);
+    if (updatedTask.status === "完了") upsertTaskCompletionBridgeItem(updatedTask);
     setNotice("タスクを更新しました。");
   }
 
@@ -1112,31 +1206,49 @@ function App() {
 
   function completeTask(task: Task, record: CompletionRecordDraft) {
     const time = nowIso();
-    updateTask(task.id, (current) => ({
-      ...current,
+    const completedTask: Task = {
+      ...task,
       status: "完了",
       completedAt: makeCompletedAt(currentLifeDate, record.completedTime),
       completedLifeDate: currentLifeDate,
       durationMinutes: record.durationMinutes,
       updatedAt: time,
+    };
+    updateTask(task.id, (current) => ({
+      ...current,
+      status: "完了",
+      completedAt: completedTask.completedAt,
+      completedLifeDate: completedTask.completedLifeDate,
+      durationMinutes: completedTask.durationMinutes,
+      updatedAt: time,
     }));
+    upsertTaskCompletionBridgeItem(completedTask);
     setNotice("完了記録を保存しました。");
   }
 
   function saveCompletionRecord(task: Task, record: CompletionRecordDraft) {
     const lifeDate = taskCompletedLifeDate(task) || currentLifeDate;
-    updateTask(task.id, (current) => ({
-      ...current,
+    const updatedTask: Task = {
+      ...task,
       completedAt: makeCompletedAt(lifeDate, record.completedTime),
       completedLifeDate: lifeDate,
       durationMinutes: record.durationMinutes,
       updatedAt: nowIso(),
+    };
+    updateTask(task.id, (current) => ({
+      ...current,
+      completedAt: updatedTask.completedAt,
+      completedLifeDate: updatedTask.completedLifeDate,
+      durationMinutes: updatedTask.durationMinutes,
+      updatedAt: updatedTask.updatedAt,
     }));
+    upsertTaskCompletionBridgeItem(updatedTask);
     setNotice("完了記録を更新しました。");
   }
 
   function undoComplete(task: Task) {
     updateTask(task.id, (current) => ({ ...current, status: "今日やる", completedAt: null, completedLifeDate: null, durationMinutes: null, updatedAt: nowIso() }));
+    dismissPendingTaskCompletionBridgeItem(task.id);
     setNotice("完了を取り消して、今日やるに戻しました。");
   }
 
