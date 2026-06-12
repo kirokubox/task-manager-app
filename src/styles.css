@@ -76,11 +76,14 @@ h2, h3, p { margin-top: 0; overflow-wrap: anywhere; }
 .secondary-actions { padding-top: 0.15rem; }
 .primary-button { background: #2f5f7a; color: #ffffff; border-color: #2f5f7a; font-weight: 750; }
 .today-actions { display: grid; gap: 0.55rem; margin-bottom: 0.9rem; }
-.today-entry-buttons { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.55rem; }
+.today-entry-buttons { display: grid; gap: 0.55rem; }
 .today-entry-buttons button { width: 100%; min-width: 0; font-weight: 800; }
+.today-entry-pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.55rem; }
 .add-task-button { width: 100%; min-height: 50px; font-size: 1.02rem; }
 .today-add-panel { display: grid; gap: 0.75rem; padding-top: 0.35rem; }
 .bulk-panel { display: grid; gap: 0.75rem; padding: 0.75rem; border: 1px solid #d7e5ee; border-radius: 8px; background: #fafdff; }
+.bulk-panel .button-row { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.5rem; }
+.bulk-panel .button-row button { width: 100%; }
 .bulk-panel textarea { min-height: 9rem; }
 .bulk-error { white-space: pre-wrap; }
 .diary-candidate-panel { display: grid; gap: 0.75rem; padding: 0.75rem; border: 1px solid #d7e5ee; border-radius: 8px; background: #fafdff; }
@@ -192,6 +195,7 @@ h2, h3, p { margin-top: 0; overflow-wrap: anywhere; }
   .bottom-nav button { min-height: 44px; padding: 0.5rem 0.2rem; }
   .button-row button { flex: 1 1 135px; }
   .today-entry-buttons { grid-template-columns: 1fr; }
+  .today-entry-pair { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .diary-candidate-actions { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .primary-actions button { flex-basis: calc(50% - 0.25rem); }
   .secondary-actions button { flex-basis: calc(50% - 0.25rem); }
@@ -204,7 +208,7 @@ h2, h3, p { margin-top: 0; overflow-wrap: anywhere; }
   .activity-row { grid-template-columns: minmax(0, 1fr) 82px; align-items: start; }
   .activity-row-actions { grid-column: 1 / -1; grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .activity-row-actions button { width: 100%; }
-  .activity-add-item, .activity-add-group, .task-main-grid { grid-template-columns: 1fr; }
+  .activity-add-item, .activity-add-group { grid-template-columns: 1fr; }
   .completion-form-grid { grid-template-columns: 1fr; }
   .form-grid, .filter-bar, .fixed-grid { grid-template-columns: 1fr; }
   .section { padding: 0.9rem; }

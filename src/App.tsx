@@ -246,6 +246,7 @@ const LIGHT_STATUS_OPTIONS: { label: string; value: TaskStatus }[] = [
   { label: "あとで", value: "近いうち" },
   { label: "連絡待ち", value: "連絡待ち" },
 ];
+const STOCK_STATUS_FILTER_OPTIONS = ["あとで", "連絡待ち"] as const;
 const DAY_BOUNDARY_OPTIONS = ["00:00", "03:00", "04:00", "05:00", "06:00"];
 const DURATION_OPTIONS: { label: string; value: number | null }[] = [
   { label: "未入力", value: null },
@@ -797,6 +798,16 @@ function routineItemKey(item: RoutineItem) {
 
 function activityGroupKey(group: ActivityGroup) {
   return group.id;
+}
+
+function statusLabel(status: TaskStatus) {
+  return status === "近いうち" || status === "いつかやる" || status === "保留" ? "あとで" : status;
+}
+
+function stockStatusGroup(status: TaskStatus) {
+  if (status === "近いうち" || status === "いつかやる" || status === "保留") return "あとで";
+  if (status === "連絡待ち") return "連絡待ち";
+  return "その他・未整理";
 }
 
 function uniqueByKey<T>(incoming: T[], existingKeys: Set<string>, keyOf: (item: T) => string) {
@@ -1891,13 +1902,12 @@ function TodayView(props: {
   const [isRoutineOpen, setIsRoutineOpen] = useState(false);
   const [isActivityOpen, setIsActivityOpen] = useState(false);
   const filteredTodayTasks = props.todayTasks;
-  const filteredNearDueTasks = props.nearDueTasks;
-  const filteredCompletedTodayTasks = props.completedTodayTasks;
-  const filteredRecurringTodayTasks = props.recurringTodayTasks;
-  const filteredRecurringCompletedToday = props.recurringCompletedToday;
   const filteredWaitingContactTasks = props.waitingContactTasks;
   function toggleSection(key: string) {
     setOpenSections((current) => ({ ...current, [key]: !current[key] }));
+  }
+  function openSection(key: string) {
+    setOpenSections((current) => ({ ...current, [key]: true }));
   }
   function addTaskAndClose(draft: TaskDraft) {
     const added = props.addTask(draft);
@@ -1909,13 +1919,21 @@ function TodayView(props: {
       <div className="today-actions">
         <div className="today-entry-buttons">
           <button className="primary-button add-task-button" type="button" onClick={() => setIsAddFormOpen((current) => !current)} aria-expanded={isAddFormOpen}>{isAddFormOpen ? "▼ 新規タスク" : "＋ 新規タスク"}</button>
-          <button type="button" onClick={() => setIsBulkOpen((current) => !current)} aria-expanded={isBulkOpen}>{isBulkOpen ? "▼ 一括登録" : "一括登録"}</button>
-          <button type="button" onClick={() => setIsDiaryCandidatesOpen((current) => !current)} aria-expanded={isDiaryCandidatesOpen}>
-            日記から候補{props.diaryTaskCandidates.length > 0 ? ` ${props.diaryTaskCandidates.length}件` : ""}
-          </button>
+          <div className="today-entry-pair">
+            <button type="button" onClick={() => setIsBulkOpen((current) => !current)} aria-expanded={isBulkOpen}>{isBulkOpen ? "▼ 一括登録" : "一括登録"}</button>
+            <button type="button" onClick={() => setIsDiaryCandidatesOpen((current) => !current)} aria-expanded={isDiaryCandidatesOpen}>日記候補{props.diaryTaskCandidates.length > 0 ? ` ${props.diaryTaskCandidates.length}件` : ""}</button>
+          </div>
+          <div className="today-entry-pair">
+            <button type="button" onClick={() => setIsRoutineOpen((current) => !current)} aria-expanded={isRoutineOpen}>ルーティン {props.routineItems.length}件</button>
+            <button type="button" onClick={() => setIsActivityOpen((current) => !current)} aria-expanded={isActivityOpen}>活動リスト {props.activityGroups.reduce((sum, group) => sum + group.items.length, 0)}件</button>
+          </div>
+          <div className="today-entry-pair">
+            <button type="button" onClick={() => openSection("today")}>今日やる {filteredTodayTasks.length}件</button>
+            <button type="button" onClick={() => openSection("waiting")}>連絡待ち {filteredWaitingContactTasks.length}件</button>
+          </div>
         </div>
         {isAddFormOpen && <div className="today-add-panel">
-          <TaskForm initial={newDraft("今日やる")} submitLabel="タスクを追加" onSubmit={addTaskAndClose} onSubmitCompleted={props.addTaskAsCompleted} onCancel={() => setIsAddFormOpen(false)} frequentTasks={props.frequentTasks} collapseDetails />
+          <TaskForm initial={newDraft("今日やる")} submitLabel="タスクを追加" onSubmit={addTaskAndClose} onSubmitCompleted={props.addTaskAsCompleted} onCancel={() => setIsAddFormOpen(false)} frequentTasks={props.frequentTasks} />
         </div>}
         {isBulkOpen && <BulkCompletionPanel currentLifeDate={props.currentLifeDate} registerBulkCompletions={props.registerBulkCompletions} />}
         {isDiaryCandidatesOpen && <DiaryCandidatePanel candidates={props.diaryTaskCandidates} addTaskFromDiaryCandidate={props.addTaskFromDiaryCandidate} dismissDiaryCandidate={props.dismissDiaryCandidate} />}
@@ -1944,16 +1962,6 @@ function TodayView(props: {
     </CollapsibleSection>
     <CollapsibleSection title="今日やる" count={filteredTodayTasks.length} description="今日動きたいものを置きます。あとから状態を変えても大丈夫です。" isOpen={Boolean(openSections.today)} onToggle={() => toggleSection("today")}>
       <TaskList empty="今日やるタスクはありません。必要なら新規タスクから追加できます。" tasks={filteredTodayTasks} actions={(task) => compactActions(<CompleteTaskAction task={task} completeTask={props.completeTask} />, <><MoveButtons task={task} moveTask={props.moveTask} hide={["今日やる"]} /><Action subtle onClick={() => props.registerFrequentTask(task)}>よく使う</Action><Action subtle onClick={() => props.requestDelete(task)}>削除</Action></>)} saveTask={props.saveTask} copyTask={props.copyTask} saveCompletionRecord={props.saveCompletionRecord} />
-    </CollapsibleSection>
-    <CollapsibleSection title="期限が近い" count={filteredNearDueTasks.length} description="責める場所ではなく、そろそろ見ておくものを拾う場所です。" className="due-section" isOpen={Boolean(openSections.nearDue)} onToggle={() => toggleSection("nearDue")}>
-      <TaskList empty="期限が近いタスクはありません。" tasks={filteredNearDueTasks} actions={(task) => compactActions(<CompleteTaskAction task={task} completeTask={props.completeTask} />, <><MoveButtons task={task} moveTask={props.moveTask} /><Action subtle onClick={() => props.registerFrequentTask(task)}>よく使う</Action></>)} saveTask={props.saveTask} copyTask={props.copyTask} saveCompletionRecord={props.saveCompletionRecord} />
-    </CollapsibleSection>
-    <CollapsibleSection title="繰り返し" count={filteredRecurringTodayTasks.length} description="毎週・毎月の予定や楽しみを、必要な期間だけここに出します。" isOpen={Boolean(openSections.recurring)} onToggle={() => toggleSection("recurring")}>
-      <RecurringTodayList items={filteredRecurringTodayTasks} completeRecurringTask={props.completeRecurringTask} />
-    </CollapsibleSection>
-    <CollapsibleSection title="今日完了したこと" count={filteredCompletedTodayTasks.length + filteredRecurringCompletedToday.length} description="今日やったことを見えるようにして、日記や振り返りに使います。" isOpen={Boolean(openSections.completedToday)} onToggle={() => toggleSection("completedToday")}>
-      {filteredCompletedTodayTasks.length === 0 && filteredRecurringCompletedToday.length === 0 ? <p className="empty-text">今日完了したタスクはまだありません。終わったこともあとから追加できます。</p> : filteredCompletedTodayTasks.length > 0 && <TaskList empty="" tasks={filteredCompletedTodayTasks} actions={(task) => <><Action onClick={() => props.undoComplete(task)}>完了を取り消す</Action><Action subtle onClick={() => props.registerFrequentTask(task)}>よく使う</Action></>} saveTask={props.saveTask} copyTask={props.copyTask} saveCompletionRecord={props.saveCompletionRecord} />}
-      <RecurringCompletionList completions={filteredRecurringCompletedToday} />
     </CollapsibleSection>
     <CollapsibleSection title="連絡待ち" count={filteredWaitingContactTasks.length} description="相手からの返信や回答を待っているものを、今日やることとは分けて置きます。" className="waiting-section" isOpen={Boolean(openSections.waiting)} onToggle={() => toggleSection("waiting")}>
       <TaskList empty="連絡待ちはありません。" tasks={filteredWaitingContactTasks} actions={(task) => compactActions(<CompleteTaskAction task={task} completeTask={props.completeTask} />, <><MoveButtons task={task} moveTask={props.moveTask} /><Action subtle onClick={() => props.registerFrequentTask(task)}>よく使う</Action><Action subtle onClick={() => props.requestDelete(task)}>削除</Action></>)} saveTask={props.saveTask} copyTask={props.copyTask} saveCompletionRecord={props.saveCompletionRecord} />
@@ -2018,8 +2026,8 @@ function BulkCompletionPanel({ currentLifeDate, registerBulkCompletions }: { cur
     <p className="small-note">メモから今日やったことをまとめて完了ログにします。</p>
     <label>一括登録<textarea value={text} onChange={(event) => setText(event.target.value)} rows={6} placeholder={bulkTemplate()} /></label>
     <div className="button-row">
-      <button type="button" onClick={() => submit(yesterday)}>昨日の完了として登録</button>
-      <button className="primary-button" type="button" onClick={() => submit(currentLifeDate)}>今日の完了として登録</button>
+      <button type="button" onClick={() => submit(yesterday)}>昨日登録</button>
+      <button className="primary-button" type="button" onClick={() => submit(currentLifeDate)}>今日登録</button>
     </div>
     {error && <p className="form-error bulk-error">{error}</p>}
   </div>;
@@ -2192,20 +2200,22 @@ function RoutineChecklist({ items, addRoutineItem, deleteRoutineItem, moveRoutin
 }
 
 function StockView(props: SharedProps & SearchProps & { tasks: Task[]; enjoymentInventory: EnjoymentInventory; enjoyInventoryItem: (task: RecurringTask, targetDate: string) => void; filters: Record<string, FilterValue>; setFilters: (filters: Record<string, FilterValue>) => void }) {
-  const pairs: [string, string][] = [["status", props.filters.stockStatus ?? "すべて"], ["category", props.filters.stockCategory ?? "すべて"], ["type", props.filters.stockType ?? "すべて"], ["place", props.filters.stockPlace ?? "すべて"]];
-  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({ soon: true });
-  const visibleTasks = props.tasks.filter((task) => props.matches(task, pairs) && props.matchesSearch(task));
+  const categoryFilter = props.filters.stockCategory ?? "すべて";
+  const statusFilter = props.filters.stockStatus ?? "すべて";
+  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({ later: true });
+  const visibleTasks = props.tasks.filter((task) => {
+    if (categoryFilter !== "すべて" && task.category !== categoryFilter) return false;
+    if (statusFilter !== "すべて" && stockStatusGroup(task.status) !== statusFilter) return false;
+    return props.matchesSearch(task);
+  });
   const stockActions = (task: Task) => compactActions(
     <Action onClick={() => props.moveTask(task, "今日やる")}>今日やるへ</Action>,
     <><MoveButtons task={task} moveTask={props.moveTask} hide={["今日やる"]} /><CompleteTaskAction task={task} completeTask={props.completeTask} /><Action subtle onClick={() => props.registerFrequentTask(task)}>よく使う</Action><Action subtle onClick={() => props.requestDelete(task)}>削除</Action></>,
   );
   const groups = [
-    { key: "soon", title: "近いうち", tasks: visibleTasks.filter((task) => task.status === "近いうち").sort(byDueThenUpdatedDesc) },
-    { key: "recent", title: "最近更新", tasks: visibleTasks.filter(isRecentlyUpdatedStockTask).sort(byUpdatedThenCreatedDesc) },
-    { key: "someday", title: "いつかやる", tasks: visibleTasks.filter((task) => task.status === "いつかやる").sort(byDueThenUpdatedDesc) },
-    { key: "hold", title: "保留", tasks: visibleTasks.filter((task) => task.status === "保留").sort(byDueThenUpdatedDesc) },
+    { key: "later", title: "あとで", tasks: visibleTasks.filter((task) => stockStatusGroup(task.status) === "あとで").sort(byDueThenUpdatedDesc) },
     { key: "waiting", title: "連絡待ち", tasks: visibleTasks.filter((task) => task.status === "連絡待ち").sort(byDueThenUpdatedDesc) },
-    { key: "other", title: "その他・未整理", tasks: visibleTasks.filter((task) => !["近いうち", "いつかやる", "保留", "連絡待ち"].includes(task.status)).sort(byDueThenUpdatedDesc) },
+    { key: "other", title: "その他・未整理", tasks: visibleTasks.filter((task) => stockStatusGroup(task.status) === "その他・未整理").sort(byDueThenUpdatedDesc) },
   ];
   function toggleGroup(key: string) {
     setOpenGroups((current) => ({ ...current, [key]: !current[key] }));
@@ -2250,10 +2260,8 @@ function EnjoymentInventoryCard({ inventory, enjoyInventoryItem }: { inventory: 
 function StockFilterPanel({ searchQuery, setSearchQuery, filters, setFilters }: SearchProps & { filters: Record<string, FilterValue>; setFilters: (filters: Record<string, FilterValue>) => void }) {
   const [filtersOpen, setFiltersOpen] = useState(false);
   const filterItems = [
-    { label: "状態", keyName: "stockStatus", value: filters.stockStatus ?? "すべて", options: ["近いうち", "いつかやる", "連絡待ち", "保留"] },
+    { label: "状態", keyName: "stockStatus", value: filters.stockStatus ?? "すべて", options: STOCK_STATUS_FILTER_OPTIONS },
     { label: "カテゴリ", keyName: "stockCategory", value: filters.stockCategory ?? "すべて", options: ACTIVE_TASK_CATEGORIES },
-    { label: "種類", keyName: "stockType", value: filters.stockType ?? "すべて", options: TASK_TYPES },
-    { label: "作業場所", keyName: "stockPlace", value: filters.stockPlace ?? "すべて", options: TASK_PLACES },
   ];
   const detailedFilterActive = filterItems.some((filter) => filter.value !== "すべて");
   return <div className="stock-filter-panel">
@@ -2507,7 +2515,7 @@ function SettingsView({ data, updateDayBoundaryTime, exportJson, parseImport, pa
     <CollapsibleSection title="繰り返しタスク管理" count={data.recurringTasks.length} description="毎週・毎月の予定や楽しみを、必要な期間だけ今日画面に出すための固定メニューです。" isOpen={recurringOpen} onToggle={() => setRecurringOpen((current) => !current)}>
       <RecurringTaskManager tasks={data.recurringTasks} addRecurringTask={addRecurringTask} saveRecurringTask={saveRecurringTask} setRecurringActive={setRecurringActive} requestRecurringDelete={requestRecurringDelete} />
     </CollapsibleSection>
-    <Section title="固定リスト" description="現在の新規作成・編集で使うカテゴリです。既存タスクに過去のカテゴリが残っていても、表示は維持されます。"><div className="fixed-grid"><FixedList title="種類" items={TASK_TYPES} /><FixedList title="状態" items={TASK_STATUSES} /><FixedList title="カテゴリ" items={ACTIVE_TASK_CATEGORIES} /><FixedList title="作業場所" items={TASK_PLACES} /></div></Section>
+    <Section title="固定リスト" description="現在の新規作成・編集で主に使う状態とカテゴリです。過去データ互換用の種類・作業場所は保存値として維持されます。"><div className="fixed-grid"><FixedList title="状態" items={["今日やる", "あとで", "連絡待ち", "完了"]} /><FixedList title="カテゴリ" items={ACTIVE_TASK_CATEGORIES} /></div></Section>
     <Section title="データ管理" description="バックアップ、別端末への移動、不具合時の復元に使います。">
       <p className="small-note">実運用前や大きく整理する前は、JSONエクスポートでバックアップを残しておくと安心です。</p>
       <div className="data-actions">
@@ -2560,7 +2568,7 @@ function TaskCard({ task, actions, saveTask, copyTask, saveCompletionRecord }: {
   const actionConfig = isTaskCardActions(actions) ? actions : null;
   return <article className={`task-card ${isHighPriority(task) ? "priority-high-card" : ""}`.trim()}>
     {editing ? <TaskForm initial={draftFromTask(task)} submitLabel="保存" onSubmit={(draft) => { if (!draft.title.trim()) return false; saveTask(task, draft); setEditing(false); return true; }} onCopyDraft={copyTask} onCancel={() => setEditing(false)} allowDone completedAt={task.completedAt} collapseDetails /> : <>
-      <div className="chips"><span>{task.type}</span><span>{task.category}</span><span>{task.status}</span>{isHighPriority(task) && <span className="priority-chip">優先度：高</span>}</div>
+      <div className="chips"><span>{task.category}</span><span>{statusLabel(task.status)}</span>{isHighPriority(task) && <span className="priority-chip">優先度：高</span>}</div>
       <h3>{task.title}</h3>
       <div className="task-meta">{task.dueDate && <span>期限：{task.dueDate}（{dueLabel(task.dueDate)}）</span>}<span>場所：{task.place}</span></div>
       {task.memo && <p className="task-memo">{task.memo}</p>}
@@ -2624,7 +2632,6 @@ function CompletionRecordForm({ initialTime, initialDuration, submitLabel, onSub
 function TaskForm({ initial, submitLabel, onSubmit, onSubmitCompleted, onCopyDraft, onCancel, allowDone = false, completedAt, collapseDetails = false, frequentTasks }: { initial: TaskDraft; submitLabel: string; onSubmit: (draft: TaskDraft) => boolean; onSubmitCompleted?: (draft: TaskDraft, record: CompletionRecordDraft) => boolean; onCopyDraft?: (draft: TaskDraft) => boolean; onCancel?: () => void; allowDone?: boolean; completedAt?: string | null; collapseDetails?: boolean; frequentTasks?: FrequentTask[] }) {
   const [draft, setDraft] = useState<TaskDraft>(initial);
   const [error, setError] = useState("");
-  const [detailsOpen, setDetailsOpen] = useState(!collapseDetails);
   const [frequentCopyOpen, setFrequentCopyOpen] = useState(false);
   const [completing, setCompleting] = useState(false);
   const [completedTime, setCompletedTime] = useState(timeKeyFromDate(new Date()));
@@ -2674,14 +2681,14 @@ function TaskForm({ initial, submitLabel, onSubmit, onSubmitCompleted, onCopyDra
         </button>)}
       </div>)}
     </div>}
-    <label>タイトル<input value={draft.title} onChange={(event) => setField("title", event.target.value)} placeholder="タイトルだけでも追加できます" /></label>
     <div className="task-main-grid">
+      <label>タイトル<input value={draft.title} onChange={(event) => setField("title", event.target.value)} placeholder="タイトルだけでも追加できます" /></label>
       <LightStatusSelect value={draft.status} onChange={(value) => setField("status", value)} />
-      <Select label="優先度" value={priorityDraftValue(draft.timeSlot)} options={PRIORITY_OPTIONS} emptyLabel="未入力" onChange={(value) => setField("timeSlot", value as TimeSlot)} />
     </div>
-    {collapseDetails && <button className="form-details-toggle" type="button" onClick={() => setDetailsOpen((current) => !current)} aria-expanded={detailsOpen}>{detailsOpen ? "▼ 項目を閉じる" : "▶ 項目を開く"}</button>}
-    {detailsOpen && <div className="task-create-detail-grid"><CategorySelect value={draft.category} onChange={(value) => setField("category", value)} /></div>}
-    {collapseDetails && detailsOpen && onCopyDraft && <button className="subtle-button" type="button" onClick={copyDraft}>コピーして新規登録</button>}
+    <div className="task-main-grid">
+      <Select label="優先度" value={priorityDraftValue(draft.timeSlot)} options={PRIORITY_OPTIONS} emptyLabel="未入力" onChange={(value) => setField("timeSlot", value as TimeSlot)} />
+      <CategorySelect value={draft.category} onChange={(value) => setField("category", value)} />
+    </div>
     <label>メモ<textarea value={draft.memo} onChange={(event) => setField("memo", event.target.value)} rows={3} /></label>
     {completing && onSubmitCompleted && <div className="completion-form">
       <h3>完了記録</h3>
@@ -2724,7 +2731,7 @@ function FilterBar({ filters, current, setFilters }: { filters: { label: string;
 }
 
 function MoveButtons({ task, moveTask, hide = [] }: { task: Task; moveTask: (task: Task, status: TaskStatus) => void; hide?: TaskStatus[] }) {
-  return <>{(["今日やる", "近いうち", "いつかやる", "連絡待ち", "保留"] as TaskStatus[]).filter((status) => status !== task.status && !hide.includes(status)).map((status) => <Action key={status} onClick={() => moveTask(task, status)}>{status === "いつかやる" ? "いつかへ" : `${status}へ`}</Action>)}</>;
+  return <>{(["今日やる", "近いうち", "連絡待ち"] as TaskStatus[]).filter((status) => status !== task.status && !hide.includes(status)).map((status) => <Action key={status} onClick={() => moveTask(task, status)}>{status === "近いうち" ? "あとでへ" : `${status}へ`}</Action>)}</>;
 }
 
 function Action({ children, onClick, subtle = false }: { children: React.ReactNode; onClick: () => void; subtle?: boolean }) {
