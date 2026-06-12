@@ -76,10 +76,13 @@ h2, h3, p { margin-top: 0; overflow-wrap: anywhere; }
 .secondary-actions { padding-top: 0.15rem; }
 .primary-button { background: #2f5f7a; color: #ffffff; border-color: #2f5f7a; font-weight: 750; }
 .today-actions { display: grid; gap: 0.55rem; margin-bottom: 0.9rem; }
-.today-entry-buttons { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.55rem; }
+.today-entry-buttons { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.55rem; }
 .today-entry-buttons button { width: 100%; min-width: 0; font-weight: 800; }
 .add-task-button { width: 100%; min-height: 50px; font-size: 1.02rem; }
 .today-add-panel { display: grid; gap: 0.75rem; padding-top: 0.35rem; }
+.bulk-panel { display: grid; gap: 0.75rem; padding: 0.75rem; border: 1px solid #d7e5ee; border-radius: 8px; background: #fafdff; }
+.bulk-panel textarea { min-height: 9rem; }
+.bulk-error { white-space: pre-wrap; }
 .diary-candidate-panel { display: grid; gap: 0.75rem; padding: 0.75rem; border: 1px solid #d7e5ee; border-radius: 8px; background: #fafdff; }
 .diary-candidate-panel h3 { margin: 0; color: #2f5f7a; font-size: 1rem; }
 .diary-candidate-list { display: grid; gap: 0.65rem; }
@@ -100,9 +103,27 @@ h2, h3, p { margin-top: 0; overflow-wrap: anywhere; }
 .routine-add-form { display: grid; gap: 0.7rem; padding: 0.75rem; border: 1px solid #d7e5ee; border-radius: 8px; background: #fafdff; }
 .routine-register-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.5rem; }
 .routine-register-actions button { width: 100%; font-weight: 800; }
+.activity-panel { display: grid; gap: 0.85rem; }
+.activity-groups { display: grid; gap: 0.75rem; }
+.activity-group { display: grid; gap: 0.65rem; padding: 0.8rem; border: 1px solid #d7e5ee; border-radius: 8px; background: #fafdff; }
+.activity-group-head { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 0.6rem; align-items: center; }
+.activity-group-head h3 { margin: 0; color: #2f5f7a; font-size: 1rem; }
+.activity-group-head button { min-height: 36px; padding: 0.45rem 0.65rem; }
+.activity-item-list { display: grid; gap: 0.45rem; }
+.activity-row { display: grid; grid-template-columns: minmax(0, 1fr) 92px auto; gap: 0.45rem; align-items: center; padding: 0.55rem 0.6rem; border: 1px solid #d7e5ee; border-radius: 8px; background: #ffffff; }
+.activity-check { display: inline-flex; grid-template-columns: none; align-items: center; gap: 0.55rem; min-width: 0; font-weight: 700; }
+.activity-check input { width: auto; flex: 0 0 auto; }
+.activity-check span { min-width: 0; line-height: 1.45; overflow-wrap: anywhere; }
+.activity-duration { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 0.35rem; color: #627789; font-size: 0.88rem; }
+.activity-duration input { min-width: 0; padding: 0.5rem 0.45rem; text-align: right; }
+.activity-row-actions { display: grid; grid-template-columns: repeat(3, 34px); gap: 0.3rem; }
+.activity-row-actions button { width: 34px; min-height: 34px; padding: 0; font-weight: 800; }
+.activity-add-item, .activity-add-group { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 0.5rem; }
+.activity-add-item input, .activity-add-group input { min-width: 0; padding: 0.62rem 0.55rem; }
 .subtle-button { color: #365f79; border-color: #c8d8e3; }
 .danger-button { background: #8c4a43; border-color: #8c4a43; color: #ffffff; }
 .task-form { display: grid; gap: 0.85rem; }
+.task-main-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.65rem; }
 .form-details-toggle { width: 100%; min-height: 42px; padding: 0.55rem 0.75rem; background: #fafdff; border-color: #d3e2ec; font-weight: 750; }
 .frequent-copy-panel { display: grid; gap: 0.55rem; }
 .frequent-copy-list { display: grid; gap: 0.45rem; max-height: 220px; overflow: auto; padding-right: 0.15rem; }
@@ -170,7 +191,7 @@ h2, h3, p { margin-top: 0; overflow-wrap: anywhere; }
   .bottom-nav { width: min(100% - 0.75rem, 520px); gap: 0.3rem; padding: 0.45rem; border-radius: 12px; }
   .bottom-nav button { min-height: 44px; padding: 0.5rem 0.2rem; }
   .button-row button { flex: 1 1 135px; }
-  .today-entry-buttons { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .today-entry-buttons { grid-template-columns: 1fr; }
   .diary-candidate-actions { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .primary-actions button { flex-basis: calc(50% - 0.25rem); }
   .secondary-actions button { flex-basis: calc(50% - 0.25rem); }
@@ -180,6 +201,10 @@ h2, h3, p { margin-top: 0; overflow-wrap: anywhere; }
   .enjoyment-done-button { width: 100%; }
   .routine-row { grid-template-columns: minmax(0, 1fr) auto; }
   .routine-register-actions { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .activity-row { grid-template-columns: minmax(0, 1fr) 82px; align-items: start; }
+  .activity-row-actions { grid-column: 1 / -1; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .activity-row-actions button { width: 100%; }
+  .activity-add-item, .activity-add-group, .task-main-grid { grid-template-columns: 1fr; }
   .completion-form-grid { grid-template-columns: 1fr; }
   .form-grid, .filter-bar, .fixed-grid { grid-template-columns: 1fr; }
   .section { padding: 0.9rem; }

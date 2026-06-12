@@ -40,6 +40,7 @@ type AppData = {
   recurringTasks: RecurringTask[];
   recurringCompletions: RecurringCompletion[];
   routineItems: RoutineItem[];
+  activityGroups: ActivityGroup[];
   settings: {
     categories: TaskCategory[];
     types: TaskType[];
@@ -86,6 +87,19 @@ type FrequentTaskDraft = {
 type RoutineItem = {
   id: string;
   title: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+type ActivityItem = {
+  id: string;
+  title: string;
+};
+
+type ActivityGroup = {
+  id: string;
+  title: string;
+  items: ActivityItem[];
   createdAt: string;
   updatedAt: string;
 };
@@ -168,6 +182,12 @@ type CompletionRecordDraft = {
   durationMinutes: number | null;
 };
 
+type CompletedLogDraft = {
+  title: string;
+  memo: string;
+  durationMinutes: number | null;
+};
+
 type WeeklyDurationSummary = {
   title: string;
   totalMinutes: number;
@@ -221,6 +241,11 @@ const TASK_STATUSES: TaskStatus[] = ["今日やる", "近いうち", "いつか�
 const ACTIVE_TASK_CATEGORIES: ActiveTaskCategory[] = ["生活", "仕事", "お金", "人・連絡", "趣味", "開発", "SNS", "その他"];
 const TASK_PLACES: TaskPlace[] = ["PC", "スマホ", "家", "外", "Codexに頼む", "未設定"];
 const PRIORITY_OPTIONS: TimeSlot[] = ["", "高"];
+const LIGHT_STATUS_OPTIONS: { label: string; value: TaskStatus }[] = [
+  { label: "今日やる", value: "今日やる" },
+  { label: "あとで", value: "近いうち" },
+  { label: "連絡待ち", value: "連絡待ち" },
+];
 const DAY_BOUNDARY_OPTIONS = ["00:00", "03:00", "04:00", "05:00", "06:00"];
 const DURATION_OPTIONS: { label: string; value: number | null }[] = [
   { label: "未入力", value: null },
@@ -242,10 +267,26 @@ const INITIAL_ROUTINE_TITLES = [
   "スキンケア",
   "洗濯",
   "食器洗い",
-  "自分用Webアプリ開発垢note投稿",
+  "掃除",
+  "ゴミ出し",
+  "買い物",
+  "散歩",
   "日記・日次振り返り",
-  "手書き日記投稿",
-  "タスク整理",
+  "明日の準備",
+];
+const INITIAL_ACTIVITY_GROUPS = [
+  {
+    title: "生活",
+    items: ["片付け", "買い物", "手続き"],
+  },
+  {
+    title: "作業",
+    items: ["資料整理", "メモ整理", "作業の続き"],
+  },
+  {
+    title: "発信",
+    items: ["ネタ出し", "下書き", "見直し"],
+  },
 ];
 const RECURRING_KINDS: RecurringKind[] = ["楽しみ", "習慣", "確認", "振り返り"];
 const REPEAT_TYPES: RepeatType[] = ["weekly", "monthly"];
@@ -270,6 +311,7 @@ const emptyData = (): AppData => ({
   recurringTasks: [],
   recurringCompletions: [],
   routineItems: makeInitialRoutineItems(),
+  activityGroups: makeInitialActivityGroups(),
   settings: {
     categories: ACTIVE_TASK_CATEGORIES,
     types: TASK_TYPES,
@@ -314,6 +356,20 @@ function makeInitialRoutineItems(): RoutineItem[] {
   return INITIAL_ROUTINE_TITLES.map((title) => ({
     id: crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}-${title}`,
     title,
+    createdAt: time,
+    updatedAt: time,
+  }));
+}
+
+function makeInitialActivityGroups(): ActivityGroup[] {
+  const time = nowIso();
+  return INITIAL_ACTIVITY_GROUPS.map((group) => ({
+    id: crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}-${group.title}`,
+    title: group.title,
+    items: group.items.map((title) => ({
+      id: crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}-${group.title}-${title}`,
+      title,
+    })),
     createdAt: time,
     updatedAt: time,
   }));
@@ -512,6 +568,25 @@ function isRoutineItem(value: unknown): value is RoutineItem {
   );
 }
 
+function isActivityItem(value: unknown): value is ActivityItem {
+  if (!value || typeof value !== "object") return false;
+  const item = value as Partial<ActivityItem>;
+  return typeof item.id === "string" && typeof item.title === "string";
+}
+
+function isActivityGroup(value: unknown): value is ActivityGroup {
+  if (!value || typeof value !== "object") return false;
+  const group = value as Partial<ActivityGroup>;
+  return (
+    typeof group.id === "string" &&
+    typeof group.title === "string" &&
+    Array.isArray(group.items) &&
+    group.items.every(isActivityItem) &&
+    typeof group.createdAt === "string" &&
+    typeof group.updatedAt === "string"
+  );
+}
+
 function isRecurringTask(value: unknown): value is RecurringTask {
   if (!value || typeof value !== "object") return false;
   const task = value as Partial<RecurringTask>;
@@ -552,7 +627,8 @@ function isAppData(value: unknown): value is AppData {
   const recurringTasksOk = data.recurringTasks === undefined || (Array.isArray(data.recurringTasks) && data.recurringTasks.every(isRecurringTask));
   const recurringCompletionsOk = data.recurringCompletions === undefined || (Array.isArray(data.recurringCompletions) && data.recurringCompletions.every(isRecurringCompletion));
   const routineItemsOk = data.routineItems === undefined || (Array.isArray(data.routineItems) && data.routineItems.every(isRoutineItem));
-  return typeof data.version === "number" && Array.isArray(data.tasks) && data.tasks.every(isTask) && frequentTasksOk && recurringTasksOk && recurringCompletionsOk && routineItemsOk;
+  const activityGroupsOk = data.activityGroups === undefined || (Array.isArray(data.activityGroups) && data.activityGroups.every(isActivityGroup));
+  return typeof data.version === "number" && Array.isArray(data.tasks) && data.tasks.every(isTask) && frequentTasksOk && recurringTasksOk && recurringCompletionsOk && routineItemsOk && activityGroupsOk;
 }
 
 function normalizeData(data: AppData): AppData {
@@ -567,11 +643,21 @@ function normalizeData(data: AppData): AppData {
     recurringTasks: data.recurringTasks ?? [],
     recurringCompletions: data.recurringCompletions ?? [],
     routineItems: data.routineItems ?? makeInitialRoutineItems(),
+    activityGroups: data.activityGroups ?? makeInitialActivityGroups(),
     settings: {
       ...baseSettings,
       ...data.settings,
       dayBoundaryTime,
     },
+  };
+}
+
+function normalizeAppendImportData(data: AppData): AppData {
+  const normalized = normalizeData(data);
+  return {
+    ...normalized,
+    routineItems: data.routineItems ?? [],
+    activityGroups: data.activityGroups ?? [],
   };
 }
 
@@ -636,6 +722,26 @@ function makeTaskFromDiaryCandidate(candidate: DiaryTaskCandidate, status: TaskS
   };
 }
 
+function makeCompletedTaskLog({ title, memo, durationMinutes, targetDate, category = "生活" }: { title: string; memo: string; durationMinutes: number | null; targetDate: string; category?: TaskCategory }): Task {
+  const time = dateTimeForDateKey(targetDate);
+  return {
+    id: crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`,
+    title: title.trim(),
+    type: "思いつき",
+    status: "完了",
+    category,
+    memo: memo.trim(),
+    place: "未設定",
+    timeSlot: "",
+    dueDate: null,
+    createdAt: time,
+    updatedAt: time,
+    completedAt: time,
+    completedLifeDate: targetDate,
+    durationMinutes,
+  };
+}
+
 function makeTaskFromFrequentTask(template: FrequentTask): Task {
   return makeTask({
     title: template.title,
@@ -689,6 +795,10 @@ function routineItemKey(item: RoutineItem) {
   return item.id;
 }
 
+function activityGroupKey(group: ActivityGroup) {
+  return group.id;
+}
+
 function uniqueByKey<T>(incoming: T[], existingKeys: Set<string>, keyOf: (item: T) => string) {
   const added: T[] = [];
   let skipped = 0;
@@ -710,6 +820,7 @@ function buildAppendImportPreview(current: AppData, incoming: AppData): AppendIm
   const recurringTasks = uniqueByKey(incoming.recurringTasks, new Set(current.recurringTasks.map((task) => task.id)), (task) => task.id);
   const recurringCompletions = uniqueByKey(incoming.recurringCompletions, new Set(current.recurringCompletions.map(recurringCompletionKey)), recurringCompletionKey);
   const routineItems = uniqueByKey(incoming.routineItems, new Set(current.routineItems.map(routineItemKey)), routineItemKey);
+  const activityGroups = uniqueByKey(incoming.activityGroups, new Set(current.activityGroups.map(activityGroupKey)), activityGroupKey);
   return {
     data: {
       ...current,
@@ -718,6 +829,7 @@ function buildAppendImportPreview(current: AppData, incoming: AppData): AppendIm
       recurringTasks: [...recurringTasks.added, ...current.recurringTasks],
       recurringCompletions: [...recurringCompletions.added, ...current.recurringCompletions],
       routineItems: [...current.routineItems, ...routineItems.added],
+      activityGroups: [...current.activityGroups, ...activityGroups.added],
       settings: current.settings,
     },
     counts: [
@@ -726,6 +838,7 @@ function buildAppendImportPreview(current: AppData, incoming: AppData): AppendIm
       { label: "繰り返しタスク", loaded: incoming.recurringTasks.length, added: recurringTasks.added.length, skipped: recurringTasks.skipped },
       { label: "繰り返し完了履歴", loaded: incoming.recurringCompletions.length, added: recurringCompletions.added.length, skipped: recurringCompletions.skipped },
       { label: "ルーティン項目", loaded: incoming.routineItems.length, added: routineItems.added.length, skipped: routineItems.skipped },
+      { label: "活動リスト", loaded: incoming.activityGroups.length, added: activityGroups.added.length, skipped: activityGroups.skipped },
     ],
   };
 }
@@ -818,6 +931,19 @@ function weeklyDurationSummary(tasks: Task[], currentLifeDate: string): WeeklyDu
   tasks.forEach((task) => {
     const lifeDate = taskCompletedLifeDate(task);
     if (task.status !== "完了" || lifeDate < start || lifeDate > end || task.durationMinutes === null || task.durationMinutes === undefined) return;
+    const current = summaries.get(task.title) ?? { title: task.title, totalMinutes: 0, count: 0 };
+    current.totalMinutes += task.durationMinutes;
+    current.count += 1;
+    summaries.set(task.title, current);
+  });
+  return Array.from(summaries.values()).sort((a, b) => b.totalMinutes - a.totalMinutes || a.title.localeCompare(b.title, "ja"));
+}
+
+function dailyDurationSummary(tasks: Task[], currentLifeDate: string): WeeklyDurationSummary[] {
+  const summaries = new Map<string, WeeklyDurationSummary>();
+  tasks.forEach((task) => {
+    const lifeDate = taskCompletedLifeDate(task);
+    if (task.status !== "完了" || lifeDate !== currentLifeDate || task.durationMinutes === null || task.durationMinutes === undefined) return;
     const current = summaries.get(task.title) ?? { title: task.title, totalMinutes: 0, count: 0 };
     current.totalMinutes += task.durationMinutes;
     current.count += 1;
@@ -1025,6 +1151,7 @@ function App() {
   const recurringCompletedToday = completedRecurringToday(data);
   const stockEnjoymentInventory = enjoymentInventory(data);
   const weeklyWorkSummary = weeklyDurationSummary(tasks, currentLifeDate);
+  const dailyWorkSummary = dailyDurationSummary(tasks, currentLifeDate);
   const pendingDiaryCandidates = diaryTaskCandidates.filter((candidate) => candidate.status === "pending").sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   const matchesSearch = (task: Task) => {
     const query = searchQuery.trim().toLowerCase();
@@ -1043,6 +1170,39 @@ function App() {
     setData((current) => ({ ...current, tasks: [makeTask(draft), ...current.tasks] }));
     setNotice("タスクを追加しました。");
     return true;
+  }
+
+  function saveCompletedLogs(drafts: CompletedLogDraft[], targetDate: string, noticeText: string) {
+    const tasks = drafts.map((draft) => makeCompletedTaskLog({ ...draft, targetDate }));
+    if (tasks.length === 0) return false;
+    setSaveBlocked(false);
+    setData((current) => ({ ...current, tasks: [...tasks, ...current.tasks] }));
+    tasks.forEach(upsertTaskCompletionBridgeItem);
+    setNotice(noticeText);
+    return true;
+  }
+
+  function addTaskAsCompleted(draft: TaskDraft, record: CompletionRecordDraft) {
+    if (!draft.title.trim()) return false;
+    const lifeDate = currentLifeDate;
+    const task = makeCompletedTaskLog({
+      title: draft.title,
+      memo: draft.memo,
+      durationMinutes: record.durationMinutes,
+      targetDate: lifeDate,
+      category: draft.category,
+    });
+    const completedAt = makeCompletedAt(lifeDate, record.completedTime);
+    const completedTask = { ...task, completedAt, createdAt: completedAt, updatedAt: nowIso() };
+    setSaveBlocked(false);
+    setData((current) => ({ ...current, tasks: [completedTask, ...current.tasks] }));
+    upsertTaskCompletionBridgeItem(completedTask);
+    setNotice("完了として追加しました。");
+    return true;
+  }
+
+  function registerBulkCompletions(drafts: CompletedLogDraft[], targetDate: string) {
+    return saveCompletedLogs(drafts, targetDate, `${drafts.length}件を完了ログとして登録しました。`);
   }
 
   function updateDiaryCandidate(candidateId: string, status: DiaryTaskCandidateStatus, targetTaskId?: string) {
@@ -1136,6 +1296,73 @@ function App() {
       routineItems[nextIndex] = { ...routineItems[nextIndex], updatedAt: time };
       return { ...current, routineItems };
     });
+  }
+
+  function addActivityGroup(title: string) {
+    if (!title.trim()) return false;
+    const time = nowIso();
+    const group: ActivityGroup = {
+      id: crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`,
+      title: title.trim(),
+      items: [],
+      createdAt: time,
+      updatedAt: time,
+    };
+    setSaveBlocked(false);
+    setData((current) => ({ ...current, activityGroups: [...current.activityGroups, group] }));
+    setNotice("活動タイトルを追加しました。");
+    return true;
+  }
+
+  function deleteActivityGroup(groupId: string) {
+    setSaveBlocked(false);
+    setData((current) => ({ ...current, activityGroups: current.activityGroups.filter((group) => group.id !== groupId) }));
+    setNotice("活動タイトルを削除しました。");
+  }
+
+  function addActivityItem(groupId: string, title: string) {
+    if (!title.trim()) return false;
+    const item: ActivityItem = {
+      id: crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`,
+      title: title.trim(),
+    };
+    const time = nowIso();
+    setSaveBlocked(false);
+    setData((current) => ({
+      ...current,
+      activityGroups: current.activityGroups.map((group) => group.id === groupId ? { ...group, items: [...group.items, item], updatedAt: time } : group),
+    }));
+    setNotice("行動項目を追加しました。");
+    return true;
+  }
+
+  function deleteActivityItem(groupId: string, itemId: string) {
+    setSaveBlocked(false);
+    setData((current) => ({
+      ...current,
+      activityGroups: current.activityGroups.map((group) => group.id === groupId ? { ...group, items: group.items.filter((item) => item.id !== itemId), updatedAt: nowIso() } : group),
+    }));
+    setNotice("行動項目を削除しました。");
+  }
+
+  function moveActivityItem(groupId: string, itemId: string, direction: -1 | 1) {
+    setSaveBlocked(false);
+    setData((current) => ({
+      ...current,
+      activityGroups: current.activityGroups.map((group) => {
+        if (group.id !== groupId) return group;
+        const index = group.items.findIndex((item) => item.id === itemId);
+        const nextIndex = index + direction;
+        if (index < 0 || nextIndex < 0 || nextIndex >= group.items.length) return group;
+        const items = [...group.items];
+        [items[index], items[nextIndex]] = [items[nextIndex], items[index]];
+        return { ...group, items, updatedAt: nowIso() };
+      }),
+    }));
+  }
+
+  function registerActivityCompletions(drafts: CompletedLogDraft[], targetDate: string) {
+    return saveCompletedLogs(drafts, targetDate, `${drafts.length}件の活動を完了ログとして登録しました。`);
   }
 
   function registerRoutineCompletion(checkedIds: string[], targetDate: string) {
@@ -1471,7 +1698,7 @@ function App() {
       try {
         const parsed = JSON.parse(String(reader.result));
         if (!isAppData(parsed)) throw new Error("Invalid JSON");
-        setAppendImportPreview(buildAppendImportPreview(data, normalizeData(parsed)));
+        setAppendImportPreview(buildAppendImportPreview(data, normalizeAppendImportData(parsed)));
       } catch {
         setImportError("JSONを読み込めませんでした。ファイル形式を確認してください。");
       }
@@ -1529,9 +1756,45 @@ function App() {
       {notice && <div className="message success">{notice}</div>}
 
       <main>
-        {activeTab === "今日" && <TodayView todayTasks={todayTasks} nearDueTasks={nearDueTasks} recurringTodayTasks={recurringTodayTasks} completedTodayTasks={completedTodayTasks} recurringCompletedToday={recurringCompletedToday} waitingContactTasks={waitingContactTasks} routineItems={data.routineItems} frequentTasks={data.frequentTasks} diaryTaskCandidates={pendingDiaryCandidates} addTask={addTask} copyTask={addTask} saveTask={saveTask} moveTask={moveTask} completeTask={completeTask} saveCompletionRecord={saveCompletionRecord} addTaskFromDiaryCandidate={addTaskFromDiaryCandidate} dismissDiaryCandidate={dismissDiaryCandidate} undoComplete={undoComplete} completeRecurringTask={completeRecurringTask} addRoutineItem={addRoutineItem} deleteRoutineItem={deleteRoutineItem} moveRoutineItem={moveRoutineItem} registerRoutineCompletion={registerRoutineCompletion} registerFrequentTask={registerFrequentTask} requestDelete={setDeleteTarget} />}
+        {activeTab === "今日" && <TodayView
+          todayTasks={todayTasks}
+          nearDueTasks={nearDueTasks}
+          recurringTodayTasks={recurringTodayTasks}
+          completedTodayTasks={completedTodayTasks}
+          recurringCompletedToday={recurringCompletedToday}
+          waitingContactTasks={waitingContactTasks}
+          currentLifeDate={currentLifeDate}
+          routineItems={data.routineItems}
+          activityGroups={data.activityGroups}
+          frequentTasks={data.frequentTasks}
+          diaryTaskCandidates={pendingDiaryCandidates}
+          addTask={addTask}
+          addTaskAsCompleted={addTaskAsCompleted}
+          copyTask={addTask}
+          saveTask={saveTask}
+          moveTask={moveTask}
+          completeTask={completeTask}
+          saveCompletionRecord={saveCompletionRecord}
+          addTaskFromDiaryCandidate={addTaskFromDiaryCandidate}
+          dismissDiaryCandidate={dismissDiaryCandidate}
+          undoComplete={undoComplete}
+          completeRecurringTask={completeRecurringTask}
+          addRoutineItem={addRoutineItem}
+          deleteRoutineItem={deleteRoutineItem}
+          moveRoutineItem={moveRoutineItem}
+          registerRoutineCompletion={registerRoutineCompletion}
+          addActivityGroup={addActivityGroup}
+          deleteActivityGroup={deleteActivityGroup}
+          addActivityItem={addActivityItem}
+          deleteActivityItem={deleteActivityItem}
+          moveActivityItem={moveActivityItem}
+          registerActivityCompletions={registerActivityCompletions}
+          registerBulkCompletions={registerBulkCompletions}
+          registerFrequentTask={registerFrequentTask}
+          requestDelete={setDeleteTarget}
+        />}
         {activeTab === "ストック" && <StockView tasks={stockTasks} enjoymentInventory={stockEnjoymentInventory} enjoyInventoryItem={enjoyInventoryItem} filters={filters} setFilters={setFilters} searchQuery={searchQuery} setSearchQuery={setSearchQuery} copyTask={addTask} saveTask={saveTask} moveTask={moveTask} completeTask={completeTask} saveCompletionRecord={saveCompletionRecord} registerFrequentTask={registerFrequentTask} requestDelete={setDeleteTarget} matches={matches} matchesSearch={matchesSearch} />}
-        {activeTab === "完了" && <DoneView tasks={doneTasks} recurringCompletions={data.recurringCompletions} weeklyWorkSummary={weeklyWorkSummary} filters={filters} setFilters={setFilters} searchQuery={searchQuery} setSearchQuery={setSearchQuery} copyTask={addTask} saveTask={saveTask} saveCompletionRecord={saveCompletionRecord} undoComplete={undoComplete} registerFrequentTask={registerFrequentTask} requestDelete={setDeleteTarget} matches={matches} matchesSearch={matchesSearch} />}
+        {activeTab === "完了" && <DoneView tasks={doneTasks} recurringCompletions={data.recurringCompletions} weeklyWorkSummary={weeklyWorkSummary} dailyWorkSummary={dailyWorkSummary} filters={filters} setFilters={setFilters} searchQuery={searchQuery} setSearchQuery={setSearchQuery} copyTask={addTask} saveTask={saveTask} saveCompletionRecord={saveCompletionRecord} undoComplete={undoComplete} registerFrequentTask={registerFrequentTask} requestDelete={setDeleteTarget} matches={matches} matchesSearch={matchesSearch} />}
         {activeTab === "設定" && <SettingsView data={data} updateDayBoundaryTime={updateDayBoundaryTime} exportJson={exportJson} parseImport={parseImport} parseAppendImport={parseAppendImport} fileInputRef={fileInputRef} appendFileInputRef={appendFileInputRef} importError={importError} addTaskFromFrequentTask={addTaskFromFrequentTask} saveFrequentTask={saveFrequentTask} requestFrequentDelete={setFrequentDeleteTarget} addRecurringTask={addRecurringTask} saveRecurringTask={saveRecurringTask} setRecurringActive={setRecurringActive} requestRecurringDelete={setRecurringDeleteTarget} />}
       </main>
 
@@ -1591,10 +1854,13 @@ function TodayView(props: {
   completedTodayTasks: Task[];
   recurringCompletedToday: RecurringCompletion[];
   waitingContactTasks: Task[];
+  currentLifeDate: string;
   routineItems: RoutineItem[];
+  activityGroups: ActivityGroup[];
   frequentTasks: FrequentTask[];
   diaryTaskCandidates: DiaryTaskCandidate[];
   addTask: (draft: TaskDraft) => boolean;
+  addTaskAsCompleted: (draft: TaskDraft, record: CompletionRecordDraft) => boolean;
   copyTask: (draft: TaskDraft) => boolean;
   saveTask: (task: Task, draft: TaskDraft) => void;
   moveTask: (task: Task, status: TaskStatus) => void;
@@ -1609,12 +1875,21 @@ function TodayView(props: {
   deleteRoutineItem: (id: string) => void;
   moveRoutineItem: (id: string, direction: -1 | 1) => void;
   registerRoutineCompletion: (checkedIds: string[], targetDate: string) => boolean;
+  addActivityGroup: (title: string) => boolean;
+  deleteActivityGroup: (groupId: string) => void;
+  addActivityItem: (groupId: string, title: string) => boolean;
+  deleteActivityItem: (groupId: string, itemId: string) => void;
+  moveActivityItem: (groupId: string, itemId: string, direction: -1 | 1) => void;
+  registerActivityCompletions: (drafts: CompletedLogDraft[], targetDate: string) => boolean;
+  registerBulkCompletions: (drafts: CompletedLogDraft[], targetDate: string) => boolean;
   registerFrequentTask: (task: Task) => void;
 }) {
   const [openSections, setOpenSections] = useState<Record<string, boolean>>({ today: true });
   const [isAddFormOpen, setIsAddFormOpen] = useState(false);
+  const [isBulkOpen, setIsBulkOpen] = useState(false);
   const [isDiaryCandidatesOpen, setIsDiaryCandidatesOpen] = useState(false);
   const [isRoutineOpen, setIsRoutineOpen] = useState(false);
+  const [isActivityOpen, setIsActivityOpen] = useState(false);
   const filteredTodayTasks = props.todayTasks;
   const filteredNearDueTasks = props.nearDueTasks;
   const filteredCompletedTodayTasks = props.completedTodayTasks;
@@ -1634,16 +1909,30 @@ function TodayView(props: {
       <div className="today-actions">
         <div className="today-entry-buttons">
           <button className="primary-button add-task-button" type="button" onClick={() => setIsAddFormOpen((current) => !current)} aria-expanded={isAddFormOpen}>{isAddFormOpen ? "▼ 新規タスク" : "＋ 新規タスク"}</button>
+          <button type="button" onClick={() => setIsBulkOpen((current) => !current)} aria-expanded={isBulkOpen}>{isBulkOpen ? "▼ 一括登録" : "一括登録"}</button>
           <button type="button" onClick={() => setIsDiaryCandidatesOpen((current) => !current)} aria-expanded={isDiaryCandidatesOpen}>
             日記から候補{props.diaryTaskCandidates.length > 0 ? ` ${props.diaryTaskCandidates.length}件` : ""}
           </button>
         </div>
         {isAddFormOpen && <div className="today-add-panel">
-          <TaskForm initial={newDraft("いつかやる")} submitLabel="タスクを追加" onSubmit={addTaskAndClose} onCancel={() => setIsAddFormOpen(false)} allowDone frequentTasks={props.frequentTasks} />
+          <TaskForm initial={newDraft("今日やる")} submitLabel="タスクを追加" onSubmit={addTaskAndClose} onSubmitCompleted={props.addTaskAsCompleted} onCancel={() => setIsAddFormOpen(false)} frequentTasks={props.frequentTasks} collapseDetails />
         </div>}
+        {isBulkOpen && <BulkCompletionPanel currentLifeDate={props.currentLifeDate} registerBulkCompletions={props.registerBulkCompletions} />}
         {isDiaryCandidatesOpen && <DiaryCandidatePanel candidates={props.diaryTaskCandidates} addTaskFromDiaryCandidate={props.addTaskFromDiaryCandidate} dismissDiaryCandidate={props.dismissDiaryCandidate} />}
       </div>
     </Section>
+    <CollapsibleSection title="活動リスト" count={props.activityGroups.reduce((sum, group) => sum + group.items.length, 0)} description="最近やっている活動を、作業時間つきで残します。" isOpen={isActivityOpen} onToggle={() => setIsActivityOpen((current) => !current)}>
+      <ActivityList
+        groups={props.activityGroups}
+        addActivityGroup={props.addActivityGroup}
+        deleteActivityGroup={props.deleteActivityGroup}
+        addActivityItem={props.addActivityItem}
+        deleteActivityItem={props.deleteActivityItem}
+        moveActivityItem={props.moveActivityItem}
+        currentLifeDate={props.currentLifeDate}
+        registerActivityCompletions={props.registerActivityCompletions}
+      />
+    </CollapsibleSection>
     <CollapsibleSection title="ルーティン" count={props.routineItems.length} isOpen={isRoutineOpen} onToggle={() => setIsRoutineOpen((current) => !current)}>
       <RoutineChecklist
         items={props.routineItems}
@@ -1669,6 +1958,154 @@ function TodayView(props: {
     <CollapsibleSection title="連絡待ち" count={filteredWaitingContactTasks.length} description="相手からの返信や回答を待っているものを、今日やることとは分けて置きます。" className="waiting-section" isOpen={Boolean(openSections.waiting)} onToggle={() => toggleSection("waiting")}>
       <TaskList empty="連絡待ちはありません。" tasks={filteredWaitingContactTasks} actions={(task) => compactActions(<CompleteTaskAction task={task} completeTask={props.completeTask} />, <><MoveButtons task={task} moveTask={props.moveTask} /><Action subtle onClick={() => props.registerFrequentTask(task)}>よく使う</Action><Action subtle onClick={() => props.requestDelete(task)}>削除</Action></>)} saveTask={props.saveTask} copyTask={props.copyTask} saveCompletionRecord={props.saveCompletionRecord} />
     </CollapsibleSection>
+  </div>;
+}
+
+function parseDurationText(value: string) {
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  if (!/^\d+$/.test(trimmed)) return null;
+  return Number(trimmed);
+}
+
+function bulkTemplate() {
+  return [
+    "生活｜片付け｜30",
+    "作業｜資料整理｜60",
+    "発信｜下書き｜45",
+  ].join("\n");
+}
+
+function BulkCompletionPanel({ currentLifeDate, registerBulkCompletions }: { currentLifeDate: string; registerBulkCompletions: (drafts: CompletedLogDraft[], targetDate: string) => boolean }) {
+  const [text, setText] = useState("");
+  const [error, setError] = useState("");
+  const yesterday = dateKeyFromDate(addDays(dateFromKey(currentLifeDate), -1));
+  function parseRows() {
+    const rows = text.split(/\r?\n/).map((line, index) => ({ line: line.trim(), index: index + 1 })).filter((row) => row.line);
+    const drafts: CompletedLogDraft[] = [];
+    const errors: string[] = [];
+    rows.forEach((row) => {
+      const parts = row.line.split(/[|｜]/).map((part) => part.trim());
+      const durationMinutes = parseDurationText(parts[2] ?? "");
+      if (parts.length < 3 || !parts[0] || !parts[1]) {
+        errors.push(`${row.index}行目：区切りは「タイトル｜行動項目｜作業時間」です。`);
+        return;
+      }
+      if (durationMinutes === null) {
+        errors.push(`${row.index}行目：作業時間は分単位の数字で入力してください。`);
+        return;
+      }
+      drafts.push({ title: parts[0], memo: parts[1], durationMinutes });
+    });
+    return { drafts, errors };
+  }
+  function submit(targetDate: string) {
+    const { drafts, errors } = parseRows();
+    if (drafts.length === 0 && errors.length === 0) {
+      setError("登録する行を入力してください。");
+      return;
+    }
+    if (errors.length > 0) {
+      setError(errors.join("\n"));
+      return;
+    }
+    if (registerBulkCompletions(drafts, targetDate)) {
+      setText("");
+      setError("");
+    }
+  }
+  return <div className="bulk-panel">
+    <p className="small-note">メモから今日やったことをまとめて完了ログにします。</p>
+    <label>一括登録<textarea value={text} onChange={(event) => setText(event.target.value)} rows={6} placeholder={bulkTemplate()} /></label>
+    <div className="button-row">
+      <button type="button" onClick={() => submit(yesterday)}>昨日の完了として登録</button>
+      <button className="primary-button" type="button" onClick={() => submit(currentLifeDate)}>今日の完了として登録</button>
+    </div>
+    {error && <p className="form-error bulk-error">{error}</p>}
+  </div>;
+}
+
+function ActivityList({ groups, currentLifeDate, addActivityGroup, deleteActivityGroup, addActivityItem, deleteActivityItem, moveActivityItem, registerActivityCompletions }: { groups: ActivityGroup[]; currentLifeDate: string; addActivityGroup: (title: string) => boolean; deleteActivityGroup: (groupId: string) => void; addActivityItem: (groupId: string, title: string) => boolean; deleteActivityItem: (groupId: string, itemId: string) => void; moveActivityItem: (groupId: string, itemId: string, direction: -1 | 1) => void; registerActivityCompletions: (drafts: CompletedLogDraft[], targetDate: string) => boolean }) {
+  const [checkedIds, setCheckedIds] = useState<string[]>([]);
+  const [durations, setDurations] = useState<Record<string, string>>({});
+  const [newGroupTitle, setNewGroupTitle] = useState("");
+  const [newItemTitles, setNewItemTitles] = useState<Record<string, string>>({});
+  const [error, setError] = useState("");
+  const yesterday = dateKeyFromDate(addDays(dateFromKey(currentLifeDate), -1));
+  function toggleChecked(itemId: string) {
+    setCheckedIds((current) => current.includes(itemId) ? current.filter((id) => id !== itemId) : [...current, itemId]);
+    setError("");
+  }
+  function submitGroup(event: FormEvent) {
+    event.preventDefault();
+    if (addActivityGroup(newGroupTitle)) setNewGroupTitle("");
+  }
+  function submitItem(event: FormEvent, groupId: string) {
+    event.preventDefault();
+    const title = newItemTitles[groupId] ?? "";
+    if (addActivityItem(groupId, title)) setNewItemTitles((current) => ({ ...current, [groupId]: "" }));
+  }
+  function register(targetDate: string) {
+    const drafts: CompletedLogDraft[] = [];
+    const errors: string[] = [];
+    groups.forEach((group) => {
+      group.items.forEach((item) => {
+        if (!checkedIds.includes(item.id)) return;
+        const durationMinutes = parseDurationText(durations[item.id] ?? "");
+        if (durationMinutes === null) {
+          errors.push(`${group.title} / ${item.title}`);
+          return;
+        }
+        drafts.push({ title: group.title, memo: item.title, durationMinutes });
+      });
+    });
+    if (checkedIds.length === 0) {
+      setError("チェックされた項目がありません。");
+      return;
+    }
+    if (errors.length > 0) {
+      setError(`作業時間を分単位の数字で入力してください：${errors.join("、")}`);
+      return;
+    }
+    if (registerActivityCompletions(drafts, targetDate)) {
+      setCheckedIds([]);
+      setDurations({});
+      setError("");
+    }
+  }
+  return <div className="activity-panel">
+    {groups.length === 0 ? <p className="empty-text">活動リストはまだありません。</p> : <div className="activity-groups">
+      {groups.map((group) => <section className="activity-group" key={group.id}>
+        <div className="activity-group-head">
+          <h3>{group.title}</h3>
+          <button className="subtle-button" type="button" onClick={() => deleteActivityGroup(group.id)}>削除</button>
+        </div>
+        <div className="activity-item-list">
+          {group.items.map((item, index) => <div className="activity-row" key={item.id}>
+            <label className="activity-check"><input type="checkbox" checked={checkedIds.includes(item.id)} onChange={() => toggleChecked(item.id)} /><span>{item.title}</span></label>
+            <label className="activity-duration"><span>分</span><input inputMode="numeric" value={durations[item.id] ?? ""} onChange={(event) => setDurations((current) => ({ ...current, [item.id]: event.target.value }))} placeholder="0" /></label>
+            <div className="activity-row-actions">
+              <button type="button" onClick={() => moveActivityItem(group.id, item.id, -1)} disabled={index === 0} aria-label={`${item.title}を上へ移動`}>↑</button>
+              <button type="button" onClick={() => moveActivityItem(group.id, item.id, 1)} disabled={index === group.items.length - 1} aria-label={`${item.title}を下へ移動`}>↓</button>
+              <button type="button" onClick={() => deleteActivityItem(group.id, item.id)} aria-label={`${item.title}を削除`}>×</button>
+            </div>
+          </div>)}
+        </div>
+        <form className="activity-add-item" onSubmit={(event) => submitItem(event, group.id)}>
+          <input value={newItemTitles[group.id] ?? ""} onChange={(event) => setNewItemTitles((current) => ({ ...current, [group.id]: event.target.value }))} placeholder="行動項目を追加" />
+          <button type="submit">追加</button>
+        </form>
+      </section>)}
+    </div>}
+    <form className="activity-add-group" onSubmit={submitGroup}>
+      <input value={newGroupTitle} onChange={(event) => setNewGroupTitle(event.target.value)} placeholder="活動タイトルを追加" />
+      <button type="submit">活動を追加</button>
+    </form>
+    <div className="routine-register-actions">
+      <button type="button" onClick={() => register(yesterday)}>昨日登録</button>
+      <button className="primary-button" type="button" onClick={() => register(currentLifeDate)}>今日登録</button>
+    </div>
+    {error && <p className="form-error">{error}</p>}
   </div>;
 }
 
@@ -1831,7 +2268,7 @@ function StockFilterPanel({ searchQuery, setSearchQuery, filters, setFilters }: 
   </div>;
 }
 
-function DoneView(props: Omit<SharedProps, "moveTask" | "completeTask"> & SearchProps & { tasks: Task[]; recurringCompletions: RecurringCompletion[]; weeklyWorkSummary: WeeklyDurationSummary[]; filters: Record<string, FilterValue>; setFilters: (filters: Record<string, FilterValue>) => void; undoComplete: (task: Task) => void }) {
+function DoneView(props: Omit<SharedProps, "moveTask" | "completeTask"> & SearchProps & { tasks: Task[]; recurringCompletions: RecurringCompletion[]; weeklyWorkSummary: WeeklyDurationSummary[]; dailyWorkSummary: WeeklyDurationSummary[]; filters: Record<string, FilterValue>; setFilters: (filters: Record<string, FilterValue>) => void; undoComplete: (task: Task) => void }) {
   const pairs: [string, string][] = [["category", props.filters.doneCategory ?? "すべて"], ["type", props.filters.doneType ?? "すべて"]];
   const query = props.searchQuery.trim().toLowerCase();
   const filteredTasks: DoneDisplayItem[] = props.tasks
@@ -1852,6 +2289,7 @@ function DoneView(props: Omit<SharedProps, "moveTask" | "completeTask"> & Search
   }
   return <div className="view-stack">
     <Section title="完了" description="終わったことを残す場所です。日記や振り返りの材料にできます。" />
+    <DailyDurationSummaryPanel summaries={props.dailyWorkSummary} />
     <WeeklyDurationSummaryPanel summaries={props.weeklyWorkSummary} />
     <Section title="絞り込み"><DoneFilterPanel searchQuery={props.searchQuery} setSearchQuery={props.setSearchQuery} filters={props.filters} setFilters={props.setFilters} /></Section>
     {doneGroups.length === 0 ? <Section title="完了一覧"><p className="empty-text">完了タスクはまだありません。終わったことを残すと、日記や振り返りに使えます。</p></Section> : <div className="done-groups">
@@ -1860,6 +2298,22 @@ function DoneView(props: Omit<SharedProps, "moveTask" | "completeTask"> & Search
       </CollapsibleSection>)}
     </div>}
   </div>;
+}
+
+function DailyDurationSummaryPanel({ summaries }: { summaries: WeeklyDurationSummary[] }) {
+  const total = summaries.reduce((sum, summary) => sum + summary.totalMinutes, 0);
+  return <Section title="今日の作業時間">
+    {summaries.length === 0 ? <p className="empty-text">今日の作業時間はまだありません。</p> : <div className="weekly-summary-list">
+      <div className="weekly-summary-item total-summary-item">
+        <h3>合計</h3>
+        <div className="task-meta"><span>{formatDuration(total)}</span></div>
+      </div>
+      {summaries.map((summary) => <div className="weekly-summary-item" key={summary.title}>
+        <h3>{summary.title}</h3>
+        <div className="task-meta"><span>合計：{formatDuration(summary.totalMinutes)}</span><span>回数：{summary.count}回</span></div>
+      </div>)}
+    </div>}
+  </Section>;
 }
 
 function WeeklyDurationSummaryPanel({ summaries }: { summaries: WeeklyDurationSummary[] }) {
@@ -2167,11 +2621,14 @@ function CompletionRecordForm({ initialTime, initialDuration, submitLabel, onSub
   </form>;
 }
 
-function TaskForm({ initial, submitLabel, onSubmit, onCopyDraft, onCancel, allowDone = false, completedAt, collapseDetails = false, frequentTasks }: { initial: TaskDraft; submitLabel: string; onSubmit: (draft: TaskDraft) => boolean; onCopyDraft?: (draft: TaskDraft) => boolean; onCancel?: () => void; allowDone?: boolean; completedAt?: string | null; collapseDetails?: boolean; frequentTasks?: FrequentTask[] }) {
+function TaskForm({ initial, submitLabel, onSubmit, onSubmitCompleted, onCopyDraft, onCancel, allowDone = false, completedAt, collapseDetails = false, frequentTasks }: { initial: TaskDraft; submitLabel: string; onSubmit: (draft: TaskDraft) => boolean; onSubmitCompleted?: (draft: TaskDraft, record: CompletionRecordDraft) => boolean; onCopyDraft?: (draft: TaskDraft) => boolean; onCancel?: () => void; allowDone?: boolean; completedAt?: string | null; collapseDetails?: boolean; frequentTasks?: FrequentTask[] }) {
   const [draft, setDraft] = useState<TaskDraft>(initial);
   const [error, setError] = useState("");
   const [detailsOpen, setDetailsOpen] = useState(!collapseDetails);
   const [frequentCopyOpen, setFrequentCopyOpen] = useState(false);
+  const [completing, setCompleting] = useState(false);
+  const [completedTime, setCompletedTime] = useState(timeKeyFromDate(new Date()));
+  const [completedDurationValue, setCompletedDurationValue] = useState("");
   const showFrequentCopyUi = false;
   function setField<K extends keyof TaskDraft>(key: K, value: TaskDraft[K]) { setDraft((current) => ({ ...current, [key]: value })); }
   function copyFromFrequentTask(task: FrequentTask) {
@@ -2198,6 +2655,15 @@ function TaskForm({ initial, submitLabel, onSubmit, onCopyDraft, onCancel, allow
     if (!draft.title.trim()) { setError("タイトルを入力してください。"); return; }
     if (onCopyDraft?.(draft)) setError("");
   }
+  function submitCompleted() {
+    if (!draft.title.trim()) { setError("タイトルを入力してください。"); return; }
+    if (onSubmitCompleted?.(draft, { completedTime, durationMinutes: completedDurationValue === "" ? null : Number(completedDurationValue) })) {
+      setDraft({ ...initial, title: "", memo: "", dueDate: "", timeSlot: "" });
+      setCompleting(false);
+      setCompletedDurationValue("");
+      setError("");
+    }
+  }
   return <form className="task-form" onSubmit={submit}>
     {showFrequentCopyUi && frequentTasks && <div className="frequent-copy-panel">
       <button className="form-details-toggle" type="button" onClick={() => setFrequentCopyOpen((current) => !current)} aria-expanded={frequentCopyOpen}>{frequentCopyOpen ? "▼ よく使うを閉じる" : "▶ よく使うからコピー"}</button>
@@ -2209,14 +2675,36 @@ function TaskForm({ initial, submitLabel, onSubmit, onCopyDraft, onCancel, allow
       </div>)}
     </div>}
     <label>タイトル<input value={draft.title} onChange={(event) => setField("title", event.target.value)} placeholder="タイトルだけでも追加できます" /></label>
+    <div className="task-main-grid">
+      <LightStatusSelect value={draft.status} onChange={(value) => setField("status", value)} />
+      <Select label="優先度" value={priorityDraftValue(draft.timeSlot)} options={PRIORITY_OPTIONS} emptyLabel="未入力" onChange={(value) => setField("timeSlot", value as TimeSlot)} />
+    </div>
     {collapseDetails && <button className="form-details-toggle" type="button" onClick={() => setDetailsOpen((current) => !current)} aria-expanded={detailsOpen}>{detailsOpen ? "▼ 項目を閉じる" : "▶ 項目を開く"}</button>}
-    {detailsOpen && <div className="task-create-detail-grid"><Select label="種類" value={draft.type} options={TASK_TYPES} onChange={(value) => setField("type", value as TaskType)} /><Select label="状態" value={draft.status} options={allowDone ? TASK_STATUSES : TASK_STATUSES.filter((status) => status !== "完了")} onChange={(value) => setField("status", value as TaskStatus)} /><CategorySelect value={draft.category} onChange={(value) => setField("category", value)} /><Select label="作業場所" value={draft.place} options={TASK_PLACES} onChange={(value) => setField("place", value as TaskPlace)} /><Select label="優先度" value={priorityDraftValue(draft.timeSlot)} options={PRIORITY_OPTIONS} emptyLabel="未入力" onChange={(value) => setField("timeSlot", value as TimeSlot)} /><label>期限<input type="date" value={draft.dueDate} onChange={(event) => setField("dueDate", event.target.value)} /></label></div>}
+    {detailsOpen && <div className="task-create-detail-grid"><CategorySelect value={draft.category} onChange={(value) => setField("category", value)} /></div>}
     {collapseDetails && detailsOpen && onCopyDraft && <button className="subtle-button" type="button" onClick={copyDraft}>コピーして新規登録</button>}
     <label>メモ<textarea value={draft.memo} onChange={(event) => setField("memo", event.target.value)} rows={3} /></label>
+    {completing && onSubmitCompleted && <div className="completion-form">
+      <h3>完了記録</h3>
+      <p className="small-note">やったこととして記録します。</p>
+      <div className="completion-form-grid">
+        <label>完了時刻<input type="time" value={completedTime} onChange={(event) => setCompletedTime(event.target.value)} required /></label>
+        <label>作業時間<select value={completedDurationValue} onChange={(event) => setCompletedDurationValue(event.target.value)}>
+          {DURATION_OPTIONS.map((option) => <option key={option.label} value={option.value ?? ""}>{option.label}</option>)}
+        </select></label>
+      </div>
+      <div className="button-row"><button className="primary-button" type="button" onClick={submitCompleted}>完了として追加</button><button type="button" onClick={() => setCompleting(false)}>キャンセル</button></div>
+    </div>}
     {completedAt && <p className="small-note">完了日は自動設定です：{completedAt.slice(0, 10)}</p>}
     {error && <p className="form-error">{error}</p>}
-    <div className="button-row"><button className="primary-button" type="submit">{submitLabel}</button>{onCancel && <button type="button" onClick={onCancel}>キャンセル</button>}</div>
+    <div className="button-row"><button className="primary-button" type="submit">{submitLabel}</button>{onSubmitCompleted && <button type="button" onClick={() => setCompleting((current) => !current)}>完了として追加</button>}{onCancel && <button type="button" onClick={onCancel}>キャンセル</button>}</div>
   </form>;
+}
+
+function LightStatusSelect({ value, onChange }: { value: TaskStatus; onChange: (value: TaskStatus) => void }) {
+  const options = LIGHT_STATUS_OPTIONS.some((option) => option.value === value)
+    ? LIGHT_STATUS_OPTIONS
+    : [...LIGHT_STATUS_OPTIONS, { label: value, value }];
+  return <label>状態<select value={value} onChange={(event) => onChange(event.target.value as TaskStatus)}>{options.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label>;
 }
 
 function Select({ label, value, options, onChange, emptyLabel = "未設定" }: { label: string; value: string; options: readonly string[]; onChange: (value: string) => void; emptyLabel?: string }) {
