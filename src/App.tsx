@@ -1895,77 +1895,85 @@ function TodayView(props: {
   registerBulkCompletions: (drafts: CompletedLogDraft[], targetDate: string) => boolean;
   registerFrequentTask: (task: Task) => void;
 }) {
-  const [openSections, setOpenSections] = useState<Record<string, boolean>>({ today: true });
-  const [isAddFormOpen, setIsAddFormOpen] = useState(false);
-  const [isBulkOpen, setIsBulkOpen] = useState(false);
-  const [isDiaryCandidatesOpen, setIsDiaryCandidatesOpen] = useState(false);
-  const [isRoutineOpen, setIsRoutineOpen] = useState(false);
-  const [isActivityOpen, setIsActivityOpen] = useState(false);
+  const [todayPanel, setTodayPanel] = useState<"add" | "bulk" | "diary" | null>(null);
+  const [activityPanel, setActivityPanel] = useState<"routine" | "activity" | null>(null);
+  const [actionPanel, setActionPanel] = useState<"waiting" | "today" | null>("today");
   const filteredTodayTasks = props.todayTasks;
   const filteredWaitingContactTasks = props.waitingContactTasks;
-  function toggleSection(key: string) {
-    setOpenSections((current) => ({ ...current, [key]: !current[key] }));
+  const activityCount = props.activityGroups.reduce((sum, group) => sum + group.items.length, 0);
+  function toggleTodayPanel(panel: "add" | "bulk" | "diary") {
+    setTodayPanel((current) => current === panel ? null : panel);
   }
-  function openSection(key: string) {
-    setOpenSections((current) => ({ ...current, [key]: true }));
+  function toggleActivityPanel(panel: "routine" | "activity") {
+    setActivityPanel((current) => current === panel ? null : panel);
+  }
+  function toggleActionPanel(panel: "waiting" | "today") {
+    setActionPanel((current) => current === panel ? null : panel);
   }
   function addTaskAndClose(draft: TaskDraft) {
     const added = props.addTask(draft);
-    if (added) setIsAddFormOpen(false);
+    if (added) setTodayPanel(null);
     return added;
   }
   return <div className="view-stack">
-    <Section title="今日">
+    <Section title="今日" className="today-card">
       <div className="today-actions">
         <div className="today-entry-buttons">
-          <button className="primary-button add-task-button" type="button" onClick={() => setIsAddFormOpen((current) => !current)} aria-expanded={isAddFormOpen}>{isAddFormOpen ? "▼ 新規タスク" : "＋ 新規タスク"}</button>
+          <button className="primary-button add-task-button" type="button" onClick={() => toggleTodayPanel("add")} aria-expanded={todayPanel === "add"}>{todayPanel === "add" ? "▼ 新規タスク" : "＋ 新規タスク"}</button>
           <div className="today-entry-pair">
-            <button type="button" onClick={() => setIsBulkOpen((current) => !current)} aria-expanded={isBulkOpen}>{isBulkOpen ? "▼ 一括登録" : "一括登録"}</button>
-            <button type="button" onClick={() => setIsDiaryCandidatesOpen((current) => !current)} aria-expanded={isDiaryCandidatesOpen}>日記候補{props.diaryTaskCandidates.length > 0 ? ` ${props.diaryTaskCandidates.length}件` : ""}</button>
-          </div>
-          <div className="today-entry-pair">
-            <button type="button" onClick={() => setIsRoutineOpen((current) => !current)} aria-expanded={isRoutineOpen}>ルーティン {props.routineItems.length}件</button>
-            <button type="button" onClick={() => setIsActivityOpen((current) => !current)} aria-expanded={isActivityOpen}>活動リスト {props.activityGroups.reduce((sum, group) => sum + group.items.length, 0)}件</button>
-          </div>
-          <div className="today-entry-pair">
-            <button type="button" onClick={() => openSection("today")}>今日やる {filteredTodayTasks.length}件</button>
-            <button type="button" onClick={() => openSection("waiting")}>連絡待ち {filteredWaitingContactTasks.length}件</button>
+            <button type="button" onClick={() => toggleTodayPanel("bulk")} aria-expanded={todayPanel === "bulk"}>{todayPanel === "bulk" ? "▼ 一括登録" : "一括登録"}</button>
+            <button type="button" onClick={() => toggleTodayPanel("diary")} aria-expanded={todayPanel === "diary"}>日記候補{props.diaryTaskCandidates.length > 0 ? ` ${props.diaryTaskCandidates.length}件` : ""}</button>
           </div>
         </div>
-        {isAddFormOpen && <div className="today-add-panel">
-          <TaskForm initial={newDraft("今日やる")} submitLabel="タスクを追加" onSubmit={addTaskAndClose} onSubmitCompleted={props.addTaskAsCompleted} onCancel={() => setIsAddFormOpen(false)} frequentTasks={props.frequentTasks} />
+        {todayPanel === "add" && <div className="today-panel">
+          <TaskForm initial={newDraft("今日やる")} submitLabel="タスクを追加" onSubmit={addTaskAndClose} onSubmitCompleted={props.addTaskAsCompleted} onCancel={() => setTodayPanel(null)} frequentTasks={props.frequentTasks} />
         </div>}
-        {isBulkOpen && <BulkCompletionPanel currentLifeDate={props.currentLifeDate} registerBulkCompletions={props.registerBulkCompletions} />}
-        {isDiaryCandidatesOpen && <DiaryCandidatePanel candidates={props.diaryTaskCandidates} addTaskFromDiaryCandidate={props.addTaskFromDiaryCandidate} dismissDiaryCandidate={props.dismissDiaryCandidate} />}
+        {todayPanel === "bulk" && <div className="today-panel"><BulkCompletionPanel currentLifeDate={props.currentLifeDate} registerBulkCompletions={props.registerBulkCompletions} /></div>}
+        {todayPanel === "diary" && <div className="today-panel"><DiaryCandidatePanel candidates={props.diaryTaskCandidates} addTaskFromDiaryCandidate={props.addTaskFromDiaryCandidate} dismissDiaryCandidate={props.dismissDiaryCandidate} /></div>}
       </div>
     </Section>
-    <CollapsibleSection title="活動リスト" count={props.activityGroups.reduce((sum, group) => sum + group.items.length, 0)} description="最近やっている活動を、作業時間つきで残します。" isOpen={isActivityOpen} onToggle={() => setIsActivityOpen((current) => !current)}>
-      <ActivityList
-        groups={props.activityGroups}
-        addActivityGroup={props.addActivityGroup}
-        deleteActivityGroup={props.deleteActivityGroup}
-        addActivityItem={props.addActivityItem}
-        deleteActivityItem={props.deleteActivityItem}
-        moveActivityItem={props.moveActivityItem}
-        currentLifeDate={props.currentLifeDate}
-        registerActivityCompletions={props.registerActivityCompletions}
-      />
-    </CollapsibleSection>
-    <CollapsibleSection title="ルーティン" count={props.routineItems.length} isOpen={isRoutineOpen} onToggle={() => setIsRoutineOpen((current) => !current)}>
-      <RoutineChecklist
-        items={props.routineItems}
-        addRoutineItem={props.addRoutineItem}
-        deleteRoutineItem={props.deleteRoutineItem}
-        moveRoutineItem={props.moveRoutineItem}
-        registerRoutineCompletion={props.registerRoutineCompletion}
-      />
-    </CollapsibleSection>
-    <CollapsibleSection title="今日やる" count={filteredTodayTasks.length} description="今日動きたいものを置きます。あとから状態を変えても大丈夫です。" isOpen={Boolean(openSections.today)} onToggle={() => toggleSection("today")}>
-      <TaskList empty="今日やるタスクはありません。必要なら新規タスクから追加できます。" tasks={filteredTodayTasks} actions={(task) => compactActions(<CompleteTaskAction task={task} completeTask={props.completeTask} />, <><MoveButtons task={task} moveTask={props.moveTask} hide={["今日やる"]} /><Action subtle onClick={() => props.registerFrequentTask(task)}>よく使う</Action><Action subtle onClick={() => props.requestDelete(task)}>削除</Action></>)} saveTask={props.saveTask} copyTask={props.copyTask} saveCompletionRecord={props.saveCompletionRecord} />
-    </CollapsibleSection>
-    <CollapsibleSection title="連絡待ち" count={filteredWaitingContactTasks.length} description="相手からの返信や回答を待っているものを、今日やることとは分けて置きます。" className="waiting-section" isOpen={Boolean(openSections.waiting)} onToggle={() => toggleSection("waiting")}>
-      <TaskList empty="連絡待ちはありません。" tasks={filteredWaitingContactTasks} actions={(task) => compactActions(<CompleteTaskAction task={task} completeTask={props.completeTask} />, <><MoveButtons task={task} moveTask={props.moveTask} /><Action subtle onClick={() => props.registerFrequentTask(task)}>よく使う</Action><Action subtle onClick={() => props.requestDelete(task)}>削除</Action></>)} saveTask={props.saveTask} copyTask={props.copyTask} saveCompletionRecord={props.saveCompletionRecord} />
-    </CollapsibleSection>
+    <Section title="活動" className="activity-card">
+      <div className="today-entry-pair">
+        <button type="button" onClick={() => toggleActivityPanel("routine")} aria-expanded={activityPanel === "routine"}>{activityPanel === "routine" ? "▼ ルーティン" : `ルーティン ${props.routineItems.length}件`}</button>
+        <button type="button" onClick={() => toggleActivityPanel("activity")} aria-expanded={activityPanel === "activity"}>{activityPanel === "activity" ? "▼ 活動リスト" : `活動リスト ${activityCount}件`}</button>
+      </div>
+      {activityPanel === "activity" && <div className="today-panel">
+        <p className="collapse-description">最近やっている活動を、作業時間つきで残します。</p>
+        <ActivityList
+          groups={props.activityGroups}
+          addActivityGroup={props.addActivityGroup}
+          deleteActivityGroup={props.deleteActivityGroup}
+          addActivityItem={props.addActivityItem}
+          deleteActivityItem={props.deleteActivityItem}
+          moveActivityItem={props.moveActivityItem}
+          currentLifeDate={props.currentLifeDate}
+          registerActivityCompletions={props.registerActivityCompletions}
+        />
+      </div>}
+      {activityPanel === "routine" && <div className="today-panel">
+        <RoutineChecklist
+          items={props.routineItems}
+          addRoutineItem={props.addRoutineItem}
+          deleteRoutineItem={props.deleteRoutineItem}
+          moveRoutineItem={props.moveRoutineItem}
+          registerRoutineCompletion={props.registerRoutineCompletion}
+        />
+      </div>}
+    </Section>
+    <Section title="行動" className="action-card">
+      <div className="today-entry-pair">
+        <button type="button" onClick={() => toggleActionPanel("waiting")} aria-expanded={actionPanel === "waiting"}>{actionPanel === "waiting" ? "▼ 連絡待ち" : `連絡待ち ${filteredWaitingContactTasks.length}件`}</button>
+        <button type="button" onClick={() => toggleActionPanel("today")} aria-expanded={actionPanel === "today"}>{actionPanel === "today" ? "▼ 今日やる" : `今日やる ${filteredTodayTasks.length}件`}</button>
+      </div>
+      {actionPanel === "today" && <div className="today-panel">
+        <p className="collapse-description">今日動きたいものを置きます。あとから状態を変えても大丈夫です。</p>
+        <TaskList empty="今日やるタスクはありません。必要なら新規タスクから追加できます。" tasks={filteredTodayTasks} actions={(task) => compactActions(<CompleteTaskAction task={task} completeTask={props.completeTask} />, <><MoveButtons task={task} moveTask={props.moveTask} hide={["今日やる"]} /><Action subtle onClick={() => props.registerFrequentTask(task)}>よく使う</Action><Action subtle onClick={() => props.requestDelete(task)}>削除</Action></>)} saveTask={props.saveTask} copyTask={props.copyTask} saveCompletionRecord={props.saveCompletionRecord} />
+      </div>}
+      {actionPanel === "waiting" && <div className="today-panel">
+        <p className="collapse-description">相手からの返信や回答を待っているものを、今日やることとは分けて置きます。</p>
+        <TaskList empty="連絡待ちはありません。" tasks={filteredWaitingContactTasks} actions={(task) => compactActions(<CompleteTaskAction task={task} completeTask={props.completeTask} />, <><MoveButtons task={task} moveTask={props.moveTask} /><Action subtle onClick={() => props.registerFrequentTask(task)}>よく使う</Action><Action subtle onClick={() => props.requestDelete(task)}>削除</Action></>)} saveTask={props.saveTask} copyTask={props.copyTask} saveCompletionRecord={props.saveCompletionRecord} />
+      </div>}
+    </Section>
   </div>;
 }
 
